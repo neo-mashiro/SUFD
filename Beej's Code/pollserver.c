@@ -21,26 +21,26 @@
 #define BACKLOG 10
 
 void* get_in_addr(struct sockaddr* sa) {
-	return (sa->sa_family == AF_INET)
-	? &(((struct sockaddr_in*)sa)->sin_addr)
-	: &(((struct sockaddr_in6*)sa)->sin6_addr);
+    return (sa->sa_family == AF_INET)
+    ? &(((struct sockaddr_in*)sa)->sin_addr)
+    : &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 int set_listener(void) {
     int listener;
     int yes = 1;
     int status;
-	struct addrinfo hints, *servinfo, *p;
+    struct addrinfo hints, *servinfo, *p;
 
     memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;  // for server, use local loopback address
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;  // for server, use local loopback address
 
     if ((status = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-		return -1;  // return -1 instead of exit(1) because main() caller will handle errors in one go
-	}
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        return -1;  // return -1 instead of exit(1) because main() caller will handle errors in one go
+    }
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
         listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -49,9 +49,9 @@ int set_listener(void) {
         }
 
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
-			perror("setsockopt");
-			return -1;
-		}
+            perror("setsockopt");
+            return -1;
+        }
 
         if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
             close(listener);
@@ -62,10 +62,10 @@ int set_listener(void) {
 
     if (p == NULL) {
         fprintf(stderr, "server: unable to bind an available listner\n");
-		return -1;
+        return -1;
     }
 
-	freeaddrinfo(servinfo);
+    freeaddrinfo(servinfo);
 
     if (listen(listener, BACKLOG) == -1) {
         return -1;
