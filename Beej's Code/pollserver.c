@@ -1,9 +1,9 @@
 /*
-** pollserver.c -- a cheezy multiperson chat server
-** when a connection is ready-to-read, read data from it and send that data to all the other connections
-** To test, run it in one terminals, then telnet localhost 9034 from a number of other terminals.
-** You should be able to see what you type in one terminal in the other ones
-** To exit, hit CTRL-] and type quit
+ * pollserver.c -- a cheezy multiperson chat server
+ * when a connection is ready-to-read, read data from it and send that data to all the other connections
+ * To test, run it in one terminals, then telnet localhost 9034 from a number of other terminals.
+ * You should be able to see what you type in one terminal in the other ones
+ * To exit, hit CTRL-] and type quit
 */
 
 #include <stdio.h>
