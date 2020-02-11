@@ -41,6 +41,9 @@
 // reserved networks only to be used on private (disconnected) networks, or on networks behind firewalls:
 // 10.x.x.x, 192.168.x.x, 172.y.x.x, where x is between [0,255], y is between [16,31] (RFC 1918)
 
+// INADDR_ANY: all available network interfaces on the machine, a client can connect to it both within and outside LAN
+// INADDR_LOOPBACK: "localhost", intended only for connection with peers running on the same host
+
 
 /* structs */
 
