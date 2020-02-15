@@ -1,0 +1,58 @@
+> ! command with arguments
+result of the command
+
+> ! exit
+
+> ! & sleep 5
+> ! pwd
+/home/desktop
+> background command completes
+>
+
+> command
+connected to server 1.2.3.4
+server replied:
+123456  # server reply may include \n, but we don't see it as terminator, we use recv() = 0 to check connection closed
+connection closed
+
+> & command
+connected to server 1.2.3.4
+remote command running on server
+> ! pwd
+/home/desktop
+> remote command on server completed
+server replied:
+123456
+connection closed
+>
+
+> & sleep 10
+connected to server 1.2.3.4
+remote command running on server
+> & pwd
+server 1.2.3.4 busy, try again later! ?  # test to see how server reacts and figure out why
+> ! pwd
+/home/desktop
+> remote command on server completed
+server replied:
+123456
+connection closed
+>
+
+> keepalive
+keepalive mode activated!
+> command
+connected to server 1.2.3.4
+server replied:
+123456
+connection is still open, name your next command!
+> command
+server replied:
+123456
+connection is still open, name your next command!
+> & sleep 10
+remote command running on server
+> pwd
+/home/desktop  # how will the server react?
+> & pwd
+/home/desktop  # how will the server react?

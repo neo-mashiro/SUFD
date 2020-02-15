@@ -1,5 +1,9 @@
 /*
 ** server.c -- a stream socket server demo
+**
+** @example: > ./server
+**           server: waiting for connections...
+**           server: accepted connection from 127.0.0.1
 */
 
 #include <stdio.h>
@@ -19,15 +23,13 @@
 #define BACKLOG 10
 
 void sigchld_handler(int s) {
-	// this handler function helps reap zombie processes:
-	// http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
 	(void)s;  // suppress the warning of unused variable
 	int saved_errno = errno;  // waitpid() might overwrite errno, so we save and restore it
 	while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
 	errno = saved_errno;
 }
 
-void* get_in_addr(struct sockaddr* sa) {
+void* getInAddr(struct sockaddr* sa) {
 	return (sa->sa_family == AF_INET)
 	? &(((struct sockaddr_in*)sa)->sin_addr)
 	: &(((struct sockaddr_in6*)sa)->sin6_addr);
@@ -45,7 +47,7 @@ int main(void) {
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;  // for server, use local loopback address
+	hints.ai_flags = AI_PASSIVE;  // passive server, bind to INADDR_ANY
 
 	if ((status = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
@@ -77,15 +79,16 @@ int main(void) {
 		exit(1);
 	}
 
-	freeaddrinfo(servinfo);
-
 	if (listen(sockfd, BACKLOG) == -1) {
 		perror("listen");
 		exit(1);
 	}
 
+    freeaddrinfo(servinfo);
+
+    // http://www.microhowto.info/howto/reap_zombie_processes_using_a_sigchld_handler.html
     // reap zombie processes that appear as the fork()ed child processes exit
-	// this step must be performed before any child processes are spawned
+	// sigaction() must be called before any child process spawns, i.e. before fork()
 	sa.sa_handler = sigchld_handler;  // register the handler
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
@@ -104,11 +107,11 @@ int main(void) {
 			continue;
 		}
 
-		inet_ntop(cli_addr.ss_family, get_in_addr((struct sockaddr*)&cli_addr), ipstr, sizeof(ipstr));
+		inet_ntop(cli_addr.ss_family, getInAddr((struct sockaddr*)&cli_addr), ipstr, sizeof(ipstr));
 		printf("server: accepted connection from %s\n", ipstr);
 
 		if (!fork()) {  // child process
-			close(sockfd);  // child doesn't need the listener
+			close(sockfd);  // child closes the master socket
 			char* msg = "Hello, client!";
 			if (send(new_fd, msg, strlen(msg), 0) == -1) {
 				perror("send");
@@ -116,7 +119,7 @@ int main(void) {
 			close(new_fd);
 			exit(0);
 		}
-		close(new_fd);  // parent doesn't need this socket
+		close(new_fd);  // parent closes the slave socket
 	}
 
 	return 0;

@@ -1,5 +1,9 @@
 /*
 ** client.c -- a stream socket client demo
+**
+** @example: > ./client localhost
+**           client: connected to 127.0.0.1
+**           client: received Hello, client!
 */
 
 #include <stdio.h>
@@ -16,7 +20,7 @@
 #define PORT "3490"
 #define MAXDATASIZE 4096  // max number of bytes to recv() in one shot
 
-void* get_in_addr(struct sockaddr* sa) {
+void* getInAddr(struct sockaddr* sa) {
 	return (sa->sa_family == AF_INET)
 	? &(((struct sockaddr_in*)sa)->sin_addr)
 	: &(((struct sockaddr_in6*)sa)->sin6_addr);
@@ -26,7 +30,7 @@ int main(int argc, char* argv[]) {
 	int status, sockfd, n_bytes;
 	char buf[MAXDATASIZE];
 	struct addrinfo hints, *servinfo, *p;
-	char ipstr[INET6_ADDRSTRLEN];  // large enough to hold both IPv4 and IPv6
+	char ipstr[INET6_ADDRSTRLEN];
 
 	if (argc != 2) {
 	    fprintf(stderr,"usage: client hostname\n");
@@ -57,12 +61,12 @@ int main(int argc, char* argv[]) {
 		break;  // connect to the first reachable address we can find
 	}
 
-	if (p == NULL) {  // make sure the pointer we connected to is not a null pointer
+	if (p == NULL) {
 		fprintf(stderr, "client: failed to connect\n");
 		return 2;
 	}
 
-	inet_ntop(p->ai_family, get_in_addr((struct sockaddr*)p->ai_addr), ipstr, sizeof(ipstr));
+	inet_ntop(p->ai_family, getInAddr((struct sockaddr*)p->ai_addr), ipstr, sizeof(ipstr));
 	printf("client: connected to %s\n", ipstr);
 
 	freeaddrinfo(servinfo);
@@ -77,7 +81,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	buf[n_bytes] = '\0';
-	printf("client: received '%s'\n", buf);
+	printf("client: received %s\n", buf);
 
 	close(sockfd);
 

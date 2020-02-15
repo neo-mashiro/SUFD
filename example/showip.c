@@ -1,5 +1,10 @@
 /*
 ** showip.c -- show IP addresses for a host given on the command line
+**
+** @example: > ./showip www.google.com
+**           IP addresses for www.google.com:
+**             IPv4: 172.217.164.228
+**             IPv6: 2607:f8b0:4020:804::2004
 */
 
 #include <stdio.h>
@@ -13,7 +18,7 @@
 
 int main(int argc, char* argv[]) {
 	struct addrinfo hints;
-	struct addrinfo* res, * p;
+	struct addrinfo* res, *p;
 	int status;
 	char ipstr[INET6_ADDRSTRLEN];  // accommodate both IPv4 and IPv6
 
@@ -23,7 +28,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	memset(&hints, 0, sizeof(hints));  // initialize struct to empty
-	hints.ai_family = AF_UNSPEC;       // AF_INET or AF_INET6 to force version
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
     // after the call, res will point to a linked list of 1 or more struct addrinfos
