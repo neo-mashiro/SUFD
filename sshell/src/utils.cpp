@@ -65,6 +65,7 @@ int socketConnect(const char* host, const char* port) {
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req) + 1, 0) < 0) {
+        printf("will not reach this");
         perror("send");
         return err_send;
     }
@@ -84,11 +85,11 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
             return err_poll;
         }
 
-        if (pfds[0].revents & POLLIN) {
+        if (pfds[0].revents && POLLIN) {
             if ((n_bytes = recv(sockfd, res, sizeof(res) - 1, 0)) <= 0) {
                 if (n_bytes == 0) {
                     shutdown(sockfd, SHUT_WR);
-                    printf("Connection closed by %s.\n", host);
+                    // printf("Connection closed by %s.\n", host);
                     break;
                 } else {
                     perror("recv");

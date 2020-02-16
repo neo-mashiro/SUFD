@@ -390,7 +390,7 @@ int main(int argc, char** argv, char** envp) {
             }
             // foreground command
             else {
-                if ((rc = socketTalk(sock, req, 3500, host)) < 0) {
+                if ((rc = socketTalk(sock, req, 5000, host)) < 0) {
                     socketClose(&sock);
                     exit(rc);
                 }
