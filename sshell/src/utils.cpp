@@ -64,7 +64,7 @@ int socketConnect(const char* host, const char* port) {
 }
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
-    if (send(sockfd, req, strlen(req), 0) < 0) {
+    if (send(sockfd, req, strlen(req) + 1, 0) < 0) {
         perror("send");
         return err_send;
     }
@@ -76,6 +76,7 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
 
     while ((n_res = poll(pfds, 1, timeout)) != 0) {  // timeout in milliseconds
         char res[256];  // server response
+        memset(res, 0, sizeof(res));
         int n_bytes;  // number of bytes received
 
         if (n_res < 0) {
@@ -87,7 +88,7 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
             if ((n_bytes = recv(sockfd, res, sizeof(res) - 1, 0)) <= 0) {
                 if (n_bytes == 0) {
                     shutdown(sockfd, SHUT_WR);
-                    // printf("Connection closed by %s.\n", host);
+                    printf("Connection closed by %s.\n", host);
                     break;
                 } else {
                     perror("recv");
@@ -96,15 +97,15 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
             }
         }
 
-        res[n_bytes] = '\0';
-        for (int i = 0; i < n_bytes; i++) {
-            if (res[i] == '\r' && res[i + 1] == '\n') {
-                for (int j = i; j < n_bytes; j++) {
-                    res[j] = res[j + 1];
-                }
-            }
-        }
-        printf("%s\n", res);
+        // res[n_bytes] = '\0';
+        // for (int i = 0; i < n_bytes; i++) {
+        //     if (res[i] == '\r' && res[i + 1] == '\n') {
+        //         for (int j = i; j < n_bytes; j++) {
+        //             res[j] = res[j + 1];
+        //         }
+        //     }
+        // }
+        printf("%s", res);
         fflush(stdout);  // print server response in real-time (asap)
     }
     // if (n_res == 0) {
@@ -120,6 +121,7 @@ int socketClose(int* sockfd) {
         }
         *sockfd = -1;
     }
+    printf("client: connection closed\n");
     return 0;
 }
 

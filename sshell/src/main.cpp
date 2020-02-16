@@ -53,6 +53,10 @@ void disable(int signal) {}
 
 /* register zombie reaper handler */
 void registerZombieReaper(struct sigaction* sa_ptr, handler_t f) {
+    // when a child process terminates, its info remains in the process table, i.e. a zombie
+    // with zombies, waitpid() can trace the exit info of a child even if that child has finished
+    // hence, if we wait/waitpid a child, it will be removed from the process table and die forever
+    // in other cases, they must be reaped to clean up the process table which could be exhausted
     sa_ptr->sa_handler = f;  // user-defined handler
     if (sigaction(SIGCHLD, sa_ptr, NULL) == -1) {
         perror("sigaction");
@@ -144,7 +148,7 @@ void execMore(const char* filename) {
     delete[] line;
 }
 
-int main (int argc, char** argv, char** envp) {
+int main(int argc, char** argv, char** envp) {
     struct sigaction sa;  // signal action
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
@@ -282,15 +286,19 @@ int main (int argc, char** argv, char** envp) {
             }
         }
 
-        // command string without prefixes, used as request to send() to server
+        // command string void of prefixes but suffixed with '\n', used as request to send() to server
         char req[256];
+        memset(req, 0, sizeof(req));
         for (unsigned int i = 0; i < num_tok; i++) {
             if (i == 0) {
                 sprintf(req, "%s", real_com[i]);
-            } else {
+            }
+            else {
                 sprintf(req + strlen(req), " %s", real_com[i]);
             }
         }
+        req[strlen(req)] = '\n';
+
 
         // check null input
         if (strlen(real_com[0]) == 0) {  // no command, user pressed Enter
@@ -315,25 +323,13 @@ int main (int argc, char** argv, char** envp) {
             }
             else if (strcmp(real_com[0], "keepalive") == 0) {
                 keepalive = 1;
+                printf("keepalive mode turned on.\n");
             }
-            // else if (strcmp(real_com[0], "close") == 0) {
-            //     printf("turning off keepalive mode ....\n");
-            //     if (sock != -1) {
-            //         if (sock is still being used by some bg) {  // fg must finished or we won't reach here
-            //             printf("waiting for remote background commands to finish ....\n");
-            //             pipe(read);  // wait for those to finish; this will block
-            //             printf("remote commands completed on the other end of the pipeline.\n");
-            //         }
-            //         close(sock);
-            //         printf("keepalive mode successfully turned off.\n");
-            //     }
-            //     continue;
-            // }
-
-            // I know, the server is iterative no concurrency, it serves 1 client at a time
-            // need to be queued
-            // so if keepalive not enabled, 2 bg commands will not show interleave, but they will go 1 by 1 in sequence
-            // if keepalive, within 1 connection, it will be interleaved
+            else if (strcmp(real_com[0], "close") == 0) {
+                socketClose(&sock);
+                keepalive = 0;
+                printf("keepalive mode turned off.\n");
+            }
 
             // external command
             else {
@@ -375,17 +371,17 @@ int main (int argc, char** argv, char** envp) {
             // background command
             if (bg == 1) {
                 int childp = fork();
-                if (childp == 0) {  // child
-                    if ((rc = socketTalk(sock, req, 500, host)) < 0) {
+                if (childp == 0) {  // child, socket is copied, reference count + 1
+                    if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
                         socketClose(&sock);
                         exit(rc);
                     }
-                    // pipe(write);  // child must notify parent when talk is finished
-                    socketClose(&sock);  // child must close socket
-                    printf("& %s done (%d)\n", real_com[0], WEXITSTATUS(status));
-                    return 0;            // child must terminate
+                    printf("& %s done (%d)\n", real_com[0], WEXITSTATUS(rc));
+                    close(sock);  // child must (normally) close socket, reference count - 1
+                    return 0;  // child must terminate and not continue its loop
                 }
                 else {  // parent
+                    printf("client: remote command running in background\n");
                     if (keepalive == 0) {
                         socketClose(&sock);  // close socket if keepalive is disabled
                     }
@@ -394,7 +390,7 @@ int main (int argc, char** argv, char** envp) {
             }
             // foreground command
             else {
-                if ((rc = socketTalk(sock, req, 500, host)) < 0) {
+                if ((rc = socketTalk(sock, req, 3500, host)) < 0) {
                     socketClose(&sock);
                     exit(rc);
                 }
