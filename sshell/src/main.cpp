@@ -299,7 +299,6 @@ int main(int argc, char** argv, char** envp) {
         }
         req[strlen(req)] = '\n';
 
-
         // check null input
         if (strlen(real_com[0]) == 0) {  // no command, user pressed Enter
             continue;
@@ -326,6 +325,7 @@ int main(int argc, char** argv, char** envp) {
                 printf("keepalive mode turned on.\n");
             }
             else if (strcmp(real_com[0], "close") == 0) {
+                printf("client: socket %d connection closed\n", sock);
                 socketClose(&sock);
                 keepalive = 0;
                 printf("keepalive mode turned off.\n");
@@ -360,42 +360,47 @@ int main(int argc, char** argv, char** envp) {
         else {
             int rc;
 
-            // connect socket if not connected, otherwise ignore (when keepalive is on)
-            if (sock < 0) {
+            // fire up socket connection
+            if (keepalive == 0 || sock == -1) {
                 sock = socketConnect(host, convertPort(port));
                 if (sock < 0) {
                     socketClose(&sock);
                     exit(sock);
                 }
             }
+
             // background command
             if (bg == 1) {
                 int childp = fork();
                 if (childp == 0) {  // child, socket is copied, reference count + 1
-                    if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
-                        socketClose(&sock);
+                    if ((rc = socketTalk(sock, req, 500, host)) < 0) {
+                        close(sock);  // child silently close connection (no message) unless error occured
+                        printf("client child: socketTalk() returns non-null exit code, connection closed\n");
                         exit(rc);
                     }
                     printf("& %s done (%d)\n", real_com[0], WEXITSTATUS(rc));
-                    close(sock);  // child must (normally) close socket, reference count - 1
+                    close(sock);  // silently close connection, reference count - 1
                     return 0;  // child must terminate and not continue its loop
                 }
                 else {  // parent
                     printf("client: remote command running in background\n");
                     if (keepalive == 0) {
-                        socketClose(&sock);  // close socket if keepalive is disabled
+                        printf("client: socket %d connection closed\n", sock);
+                        socketClose(&sock);  // close socket if keepalive is off, otherwise keep connection
                     }
                     continue;
                 }
             }
             // foreground command
             else {
-                if ((rc = socketTalk(sock, req, 5000, host)) < 0) {
+                if ((rc = socketTalk(sock, req, 500, host)) < 0) {
                     socketClose(&sock);
+                    printf("client: socketTalk() returns non-null exit code, connection closed\n");
                     exit(rc);
                 }
                 if (keepalive == 0) {
-                    socketClose(&sock);  // close socket if keepalive is disabled
+                    printf("client: socket %d connection closed\n", sock);
+                    socketClose(&sock);  // close socket if keepalive is off, otherwise keep connection
                 }
             }
         }

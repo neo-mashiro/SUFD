@@ -57,7 +57,7 @@ int socketConnect(const char* host, const char* port) {
     }
 
     inet_ntop(p->ai_family, getInAddr((struct sockaddr*)p->ai_addr), ipstr, sizeof(ipstr));
-    printf("client: connected to %s\n", ipstr);
+    printf("client: socket %d connected to %s\n", sockfd, ipstr);
 
     freeaddrinfo(servinfo);
     return sockfd;
@@ -65,7 +65,7 @@ int socketConnect(const char* host, const char* port) {
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req) + 1, 0) < 0) {
-        printf("will not reach this");
+        printf("send returns < 0\n");
         perror("send");
         return err_send;
     }
@@ -87,10 +87,9 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
 
         if (pfds[0].revents && POLLIN) {
             if ((n_bytes = recv(sockfd, res, sizeof(res) - 1, 0)) <= 0) {
-                if (n_bytes == 0) {
-                    shutdown(sockfd, SHUT_WR);
-                    // printf("Connection closed by %s.\n", host);
-                    break;
+                if (n_bytes == 0) {  // when server shutdown it sends FIN to us
+                    printf("\nclient: connection closed by %s\n", host);
+                    return 0;  // return control and close socket in main()
                 } else {
                     perror("recv");
                     return err_recv;
@@ -98,20 +97,21 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
             }
         }
 
-        // res[n_bytes] = '\0';
-        // for (int i = 0; i < n_bytes; i++) {
-        //     if (res[i] == '\r' && res[i + 1] == '\n') {
-        //         for (int j = i; j < n_bytes; j++) {
-        //             res[j] = res[j + 1];
-        //         }
-        //     }
-        // }
+        res[n_bytes] = '\0';
+
+        // convert line terminator \r\n to \n
+        for (int i = 0; i < n_bytes; i++) {
+            if (res[i] == '\r' && res[i + 1] == '\n') {
+                for (int j = i; j < n_bytes; j++) {
+                    res[j] = res[j + 1];
+                }
+            }
+        }
         printf("%s", res);
         fflush(stdout);  // print server response in real-time (asap)
     }
-    // if (n_res == 0) {
-    //     printf("poll timed out, no data received...\n");
-    // }
+    // poll timeout is reached, no more data to recv, talk is over
+    printf("\n");
     return 0;
 }
 
@@ -122,7 +122,6 @@ int socketClose(int* sockfd) {
         }
         *sockfd = -1;
     }
-    printf("client: connection closed\n");
     return 0;
 }
 
@@ -196,6 +195,9 @@ int readLine(int file, char* buf, size_t size) {
             buf[i] = '\0';
             return i;
         }
+        // if (!tmp) {
+        //     return recv_nodata;
+        // }
         buf[i] = tmp;
     }
 
