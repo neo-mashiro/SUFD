@@ -373,19 +373,19 @@ int main(int argc, char** argv, char** envp) {
             if (bg == 1) {
                 int childp = fork();
                 if (childp == 0) {  // child, socket is copied, reference count + 1
-                    if ((rc = socketTalk(sock, req, 500, host)) < 0) {
-                        close(sock);  // child silently close connection (no message) unless error occured
-                        printf("client child: socketTalk() returns non-null exit code, connection closed\n");
+                    if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
+                        socketClose(&sock);  // child silently close connection (no message) unless error occured
+                        printf("client child: socketTalk() returns %d, connection closed\n", rc);
                         exit(rc);
                     }
                     printf("& %s done (%d)\n", real_com[0], WEXITSTATUS(rc));
-                    close(sock);  // silently close connection, reference count - 1
+                    socketClose(&sock);  // silently close connection, reference count - 1
                     return 0;  // child must terminate and not continue its loop
                 }
                 else {  // parent
                     printf("client: remote command running in background\n");
                     if (keepalive == 0) {
-                        printf("client: socket %d connection closed\n", sock);
+                        printf("client: connection closed\n");
                         socketClose(&sock);  // close socket if keepalive is off, otherwise keep connection
                     }
                     continue;
@@ -393,13 +393,13 @@ int main(int argc, char** argv, char** envp) {
             }
             // foreground command
             else {
-                if ((rc = socketTalk(sock, req, 500, host)) < 0) {
+                if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
                     socketClose(&sock);
-                    printf("client: socketTalk() returns non-null exit code, connection closed\n");
+                    printf("client: socketTalk() returns %d, connection closed\n", rc);
                     exit(rc);
                 }
                 if (keepalive == 0) {
-                    printf("client: socket %d connection closed\n", sock);
+                    printf("client: connection closed\n");
                     socketClose(&sock);  // close socket if keepalive is off, otherwise keep connection
                 }
             }

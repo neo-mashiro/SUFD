@@ -56,8 +56,8 @@ int socketConnect(const char* host, const char* port) {
         return err_connect;
     }
 
-    inet_ntop(p->ai_family, getInAddr((struct sockaddr*)p->ai_addr), ipstr, sizeof(ipstr));
-    printf("client: socket %d connected to %s\n", sockfd, ipstr);
+    inet_ntop(p->ai_family, getInAddr(p->ai_addr), ipstr, sizeof(ipstr));
+    printf("client: connected to %s\n", ipstr);
 
     freeaddrinfo(servinfo);
     return sockfd;
@@ -65,7 +65,6 @@ int socketConnect(const char* host, const char* port) {
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req) + 1, 0) < 0) {
-        printf("send returns < 0\n");
         perror("send");
         return err_send;
     }
