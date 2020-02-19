@@ -3,14 +3,14 @@ SRC = src
 OBJ = build
 INC = include
 
-TARGET = sshell
+TARGET = rsshell
 
 CXXFLAGS = -g -Wall -pedantic -I$(INC)
 
 SRCS = $(wildcard $(SRC)/*.cpp)
 OBJS = $(patsubst $(SRC)/%.cpp, $(OBJ)/%.o, $(SRCS))
 
-$(BIN)/$(TARGET): $(OBJS)
+$(TARGET): $(OBJS)
 	@echo "linking..."
 	$(CXX) $(CXXFLAGS) -o $@ $^
 	@echo "done!"
@@ -23,4 +23,4 @@ $(OBJ)/%.o: $(SRC)/%.cpp
 
 clean:
 	@echo "cleaning..."
-	rm -f $(BIN)/$(TARGET) $(OBJS)
+	rm -f $(TARGET) $(OBJS)

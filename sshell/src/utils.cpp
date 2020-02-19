@@ -64,6 +64,7 @@ int socketConnect(const char* host, const char* port) {
 }
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
+    printf("sending %s\n", req);
     if (send(sockfd, req, strlen(req) + 1, 0) < 0) {
         perror("send");
         return err_send;
@@ -80,6 +81,7 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
         int n_bytes;  // number of bytes received
 
         if (n_res < 0) {
+            continue;  // test
             perror("poll");
             return err_poll;
         }
