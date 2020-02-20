@@ -325,7 +325,7 @@ int main(int argc, char** argv, char** envp) {
                 printf("keepalive mode turned on.\n");
             }
             else if (strcmp(real_com[0], "close") == 0) {
-                printf("client: socket %d connection closed\n", sock);
+                printf("client: connection closed\n");
                 socketClose(&sock);
                 keepalive = 0;
                 printf("keepalive mode turned off.\n");
