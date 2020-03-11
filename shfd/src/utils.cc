@@ -8,6 +8,66 @@
 
 #include "../include/utils.h"
 
+int sendall(int fd, char* buf, int* len) {
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n;
+
+    while (total < *len) {
+        n = send(fd, buf + total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
+    }
+
+    *len = total;  // return number of bytes actually sent in *len
+    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
+}
+
+// char buf[15] = "Hello world!";
+// int len = strlen(buf);
+//
+// if (sendall(sockfd, buf, &len) == -1) {
+//     perror("sendall");  // usually this happens when connection is closed on the other end (SIGPIPE)
+//     printf("only %d bytes of data have been sent!\n", len);
+// }
+
+int recvtimeout(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
+
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
+}
+
+// int n_bytes = recvtimeout(sockfd, buf, sizeof(buf), 500); // 500 milliseconds timeout
+// if (n == -1) {
+//     perror("recvtimeout");
+// }
+// else if (n == 0) {
+//     printf("connection closed by %s\n", host);
+// }
+// else if (n == -2) {
+//     printf("timed out and no data received\n");
+// }
+// else {
+//     ...  // handle received data
+// }
+
+
+
+
+
+
+
+
+
+
+
 char* convertPort(unsigned short port) {
     static char port_str[10];
     sprintf(port_str,"%d", port);

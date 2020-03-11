@@ -5,7 +5,7 @@ INC = include
 
 TARGET = shfd
 
-CXXFLAGS = -g -Wall -pedantic -I$(INC)
+CXXFLAGS = -g -Wall -pedantic -pthread -I$(INC)
 
 SRCS = $(wildcard $(SRC)/*.cpp)
 OBJS = $(patsubst $(SRC)/%.cpp, $(OBJ)/%.o, $(SRCS))

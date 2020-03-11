@@ -1,2 +1,17 @@
 // consider security when exec shells
 // use system()
+
+void handleSignal(int signal) {
+	(void)signal;
+    switch (signal) {
+        case SIGINT:
+            ....
+            break;
+        case SIGPIPE:
+            ....
+            break;
+        default:
+            ....
+    }
+    ....
+}
