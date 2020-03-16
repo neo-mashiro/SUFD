@@ -8,65 +8,18 @@
 
 #include "../include/utils.h"
 
-int sendall(int fd, char* buf, int* len) {
-    int total = 0;        // how many bytes we've sent
-    int bytesleft = *len; // how many we have left to send
-    int n;
-
-    while (total < *len) {
-        n = send(fd, buf + total, bytesleft, 0);
-        if (n == -1) { break; }
-        total += n;
-        bytesleft -= n;
+int checkDigit(const char* str) {
+    char buf[strlen(str) + 1];
+    strcpy(buf, str);
+    size_t len = strlen(buf);
+    if (buf[len - 1] == '\n') {
+        buf[len - 1] = '\0';
     }
-
-    *len = total;  // return number of bytes actually sent in *len
-    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
+    for (int i = 0; i < len; i++) {
+        if (!isdigit(buf[i])) { return 0; }
+    }
+    return 1;
 }
-
-// char buf[15] = "Hello world!";
-// int len = strlen(buf);
-//
-// if (sendall(sockfd, buf, &len) == -1) {
-//     perror("sendall");  // usually this happens when connection is closed on the other end (SIGPIPE)
-//     printf("only %d bytes of data have been sent!\n", len);
-// }
-
-int recvtimeout(int sd, char* buf, int len, int timeout) {
-    struct pollfd pfds;
-    pfds.fd = sd;
-    pfds.events = POLLIN;
-
-    int n = poll(&pfds, 1, timeout);
-    if (n == 0) { return -2; }   // timeout
-    if (n == -1) { return -1; }  // error
-
-    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
-}
-
-// int n_bytes = recvtimeout(sockfd, buf, sizeof(buf), 500); // 500 milliseconds timeout
-// if (n == -1) {
-//     perror("recvtimeout");
-// }
-// else if (n == 0) {
-//     printf("connection closed by %s\n", host);
-// }
-// else if (n == -2) {
-//     printf("timed out and no data received\n");
-// }
-// else {
-//     ...  // handle received data
-// }
-
-
-
-
-
-
-
-
-
-
 
 char* convertPort(unsigned short port) {
     static char port_str[10];
@@ -123,6 +76,34 @@ int socketConnect(const char* host, const char* port) {
     return sockfd;
 }
 
+int sendall(int fd, char* buf, int* len) {
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n;
+
+    while (total < *len) {
+        n = send(fd, buf + total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
+    }
+
+    *len = total;  // return number of bytes actually sent in *len
+    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
+}
+
+int recvtimeout(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
+
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
+}
+
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req), 0) < 0) {
         perror("send");
@@ -144,7 +125,7 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
             return err_poll;
         }
 
-        if (pfds[0].revents && POLLIN) {
+        if (pfds[0].revents & POLLIN) {
             if ((n_bytes = recv(sockfd, res, sizeof(res) - 1, 0)) <= 0) {
                 if (n_bytes == 0) {  // when server shutdown it sends FIN to us
                     printf("\nclient: connection closed by %s\n", host);
