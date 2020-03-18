@@ -6,12 +6,25 @@
 **             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
 */
 
-#include "../include/utils.h"
+#include "utils.h"
+
+/* error code */
+const int err_sock    = -2;
+const int err_addr    = -1;
+const int err_connect = -3;
+const int err_proto   = -4;
+const int err_bind    = -5;
+const int err_listen  = -6;
+const int err_opt     = -7;
+const int err_sig     = -8;
+const int err_poll    = -9;
+const int err_send    = -10;
+const int err_recv    = -11;
 
 int checkDigit(const char* str) {
     char buf[strlen(str) + 1];
     strcpy(buf, str);
-    size_t len = strlen(buf);
+    int len = strlen(buf);
     if (buf[len - 1] == '\n') {
         buf[len - 1] = '\0';
     }
@@ -33,6 +46,46 @@ void* getInAddr(struct sockaddr* sa) {
     } else {
         return &(((struct sockaddr_in6 *) sa)->sin6_addr);
     }
+}
+
+int sendall(int fd, const char* buf, int* len) {
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n = 0;
+
+    while (total < *len) {
+        n = send(fd, buf + total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
+    }
+
+    *len = total;  // return number of bytes actually sent in *len
+    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
+}
+
+int recvtimeout(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
+
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
+}
+
+int readtimeout(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
+
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return read(sd, buf, len);  // return # of bytes received
 }
 
 int socketConnect(const char* host, const char* port) {
@@ -76,34 +129,6 @@ int socketConnect(const char* host, const char* port) {
     return sockfd;
 }
 
-int sendall(int fd, char* buf, int* len) {
-    int total = 0;        // how many bytes we've sent
-    int bytesleft = *len; // how many we have left to send
-    int n;
-
-    while (total < *len) {
-        n = send(fd, buf + total, bytesleft, 0);
-        if (n == -1) { break; }
-        total += n;
-        bytesleft -= n;
-    }
-
-    *len = total;  // return number of bytes actually sent in *len
-    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
-}
-
-int recvtimeout(int sd, char* buf, int len, int timeout) {
-    struct pollfd pfds;
-    pfds.fd = sd;
-    pfds.events = POLLIN;
-
-    int n = poll(&pfds, 1, timeout);
-    if (n == 0) { return -2; }   // timeout
-    if (n == -1) { return -1; }  // error
-
-    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
-}
-
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req), 0) < 0) {
         perror("send");
@@ -118,7 +143,7 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
     while ((n_res = poll(pfds, 1, timeout)) != 0) {  // timeout in milliseconds
         char res[256];  // server response
         memset(res, 0, sizeof(res));
-        int n_bytes;  // number of bytes received
+        int n_bytes = 0;  // number of bytes received
 
         if (n_res < 0) {
             perror("poll");

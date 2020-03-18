@@ -21,19 +21,35 @@
 #include <sys/poll.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
-/* error code */
-const int err_addr    = -1;
-const int err_sock    = -2;
-const int err_connect = -3;
-const int err_proto   = -4;
-const int err_bind    = -5;
-const int err_listen  = -6;
-const int err_opt     = -7;
-const int err_sig     = -8;
-const int err_poll    = -9;
-const int err_send    = -10;
-const int err_recv    = -11;
+// check if a string consists of only digits, returns 0(false)/1(true)
+int checkDigit(const char* str);
+
+/*
+** send string pointed by buf to the file descriptor fd, to a maximum bytes of len
+**
+** @return:   -1 on failure, 0 on success, and updates the number of bytes actually sent in *len
+** @remark:   useful when a large piece of data cannot be completely sent by a single send() call
+** @example:  char buf[15] = "Hello world!";
+              int len = strlen(buf);
+              if (sendall(sockfd, buf, &len) == -1) {
+                  perror("sendall");
+                  printf("only %d bytes of data have been sent!\n", len);
+              }
+*/
+int sendall(int fd, const char* buf, int* len);
+
+/*
+** a wrapper of recv(sd, buf, len, 0) with a given timeout in milliseconds
+**
+** @return:   # of bytes received on success, or 0 if connection closed on the other end
+**            -1 on error, -2 if timeout has been reached and no data received
+*/
+int recvtimeout(int sd, char* buf, int len, int timeout);
+
+// a wrapper of read(sd, buf, len) with a given timeout in milliseconds
+int readtimeout(int sd, char* buf, int len, int timeout);
 
 // convert port in decimal number to a string
 char* convertPort(unsigned short port);

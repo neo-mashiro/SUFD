@@ -11,8 +11,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <iostream>
-#include <string>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -28,15 +26,19 @@
 #include <time.h>
 #include <signal.h>
 #include <ctype.h>
+#include <semaphore.h>
 
-#include "../include/utils.h"
+#include "utils.h"
 
 #define N_THREADS 128
 #define N 1000
 #define MEGEXTRA 1000000
 
+int DEBUG_MODE = 1;
+int DELAY_MODE = 0;
+int VERBOSE_MODE = 1;
 const char* path[] = {"/bin", "/usr/bin", 0};
-
+const char* prompt = "> ";
 
 // then update as per Bruda's slide
 
@@ -60,11 +62,11 @@ struct lock_t {               // struct for file access control
     unsigned short n_writer;  // number of writers, 0 or 1, at most 1
 };
 
-struct echo_t {     // struct for server response
-    pthread_t tid;  // unique thread id
+struct echo_t {           // struct for server response
+    pthread_t tid;        // unique thread id
     char* status;   // OK / FAIL / ERR
-    int code;       // server side error code
-    char* message;  // client-friendly message
+    int code;             // server side error code
+    char* message;        // client-friendly message
 };
 
 struct echo_t echos[1024];  // every thread (client) receives a server response
@@ -117,8 +119,8 @@ int init_server() {
     // (void) write(lf, pbuf, strlen(pbuf));
 
     // handle signals
-    struct sigaction sa;
-    sa.sa_handler = SIG_IGN;
+    // struct sigaction sa;
+    // sa.sa_handler = SIG_IGN;
     // sigemptyset(&sa.sa_mask);
     // sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;  // SA_RESTART restarts the syscall on receiving EINTR
     //
@@ -147,6 +149,20 @@ int init_server() {
     //     perror("sigaction");
     //     exit(1);
     // }
+    // void handleSignal(int signal) {
+    // 	(void)signal;
+    //     switch (signal) {
+    //         case SIGINT:
+    //             ....
+    //             break;
+    //         case SIGPIPE:
+    //             ....
+    //             break;
+    //         default:
+    //             ....
+    //     }
+    //     ....
+    // }
 
 
     // initialize semaphore, mutex, condition variable, thread attribute
@@ -159,14 +175,14 @@ int init_server() {
     pthread_attr_setstacksize(&attr, stacksize);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);  // every client is independent
 
-    // set round-robin schedule
-    struct sched_param param;
-    memset(&param, 0, sizeof(param));
-    param.sched_priority = 1;
-    if (sched_setscheduler(0, SCHED_RR, &param) != 0) {
-        perror("sched_setscheduler");
-        exit(1);
-    }
+    // set round-robin schedule, need root access
+    // struct sched_param param;
+    // memset(&param, 0, sizeof(param));
+    // param.sched_priority = 1;
+    // if (sched_setscheduler(0, SCHED_RR, &param) != 0) {
+    //     perror("sched_setscheduler");
+    //     exit(1);
+    // }
 
     return 0;
 }
@@ -204,7 +220,8 @@ void* monitor(void*) {
     pthread_exit(NULL);
 }
 */
-int opener(int argc, const char** argv, int echo_id) {
+
+int opener(int argc, char** argv, int echo_id) {
     // validate request format
     if (argc != 2) {
         echos[echo_id].status = "FAIL";
@@ -244,10 +261,10 @@ int opener(int argc, const char** argv, int echo_id) {
 
     // if we reach this, file is opened for the 1st time
     // obtain an entry in locks[] specified by lock_id, and increment n_lock, MT-safe
-    pthread_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     int lock_id = n_lock;
     n_lock++;
-    pthread_mutex_unlock(mutex);
+    pthread_mutex_unlock(&mutex);
 
     // update shared struct lock_t, prepare file for future manipulation
     locks[lock_id].f_name = filename;
@@ -265,7 +282,7 @@ int opener(int argc, const char** argv, int echo_id) {
     return lock_id;
 }
 
-int seeker(int argc, const char** argv, int echo_id, int lock_id) {
+int seeker(int argc, char** argv, int echo_id, int lock_id) {
     // validate request format
     if (argc != 3) {
         echos[echo_id].status = "FAIL";
@@ -286,8 +303,8 @@ int seeker(int argc, const char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = argv[1];
-    int offset = argv[2];
+    int identifier = (int)(intptr_t)argv[1];
+    int offset = (int)(intptr_t)argv[2];
     struct lock_t lock = locks[lock_id];
 
     if (identifier != lock.fd || lock.fd <= 0) {
@@ -328,7 +345,7 @@ int seeker(int argc, const char** argv, int echo_id, int lock_id) {
     return 0;
 }
 
-int reader(int argc, const char** argv, int echo_id, int lock_id) {
+int reader(int argc, char** argv, int echo_id, int lock_id) {
     // validate request format
     if (argc != 3) {
         echos[echo_id].status = "FAIL";
@@ -349,8 +366,8 @@ int reader(int argc, const char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = argv[1];
-    int len = argv[2];
+    int identifier = (int)(intptr_t)argv[1];
+    int len = (int)(intptr_t)argv[2];
     struct lock_t lock = locks[lock_id];
 
     if (identifier != lock.fd || lock.fd <= 0) {
@@ -395,7 +412,7 @@ int reader(int argc, const char** argv, int echo_id, int lock_id) {
     return 0;
 }
 
-int writer(int argc, const char** argv, int echo_id, int lock_id) {
+int writer(int argc, char** argv, int echo_id, int lock_id) {
     // validate request format
     if (argc != 3) {
         echos[echo_id].status = "FAIL";
@@ -410,8 +427,8 @@ int writer(int argc, const char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = argv[1];
-    char* buf = argv[2];
+    int identifier = (int)(intptr_t)argv[1];
+    const char* buf = argv[2];
 
     struct lock_t lock = locks[lock_id];
 
@@ -436,7 +453,7 @@ int writer(int argc, const char** argv, int echo_id, int lock_id) {
     int left = len;  // bytes left
     int n;
     while (total < left) {
-        n = write(fd, buf + total, left);  // update seek
+        n = write(lock.fd, buf + total, left);  // update seek
         if (n == -1) {
             echos[echo_id].status = "FAIL";
             echos[echo_id].code = errno;
@@ -461,7 +478,7 @@ int writer(int argc, const char** argv, int echo_id, int lock_id) {
     return 0;
 }
 
-int closer(int argc, const char** argv, int echo_id, int lock_id) {
+int closer(int argc, char** argv, int echo_id, int lock_id) {
     // validate request format
     if (argc != 2) {
         echos[echo_id].status = "FAIL";
@@ -476,7 +493,7 @@ int closer(int argc, const char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = argv[1];
+    int identifier = (int)(intptr_t)argv[1];
     struct lock_t lock = locks[lock_id];
 
     if (identifier != lock.fd || lock.fd <= 0) {
@@ -541,25 +558,40 @@ void* s_worker(void* csock) {
     sem_wait(&s_sem);
 
     // obtain an entry in echos[] specified by echo_id, and increment n_echos, MT-safe
-    pthread_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     int echo_id = n_echo;
     n_echo++;
-    pthread_mutex_unlock(mutex);
+    pthread_mutex_unlock(&mutex);
     echos[echo_id].tid = pthread_self();
 
     // add client socket to poll()
-    int sock = *((int*)csock);
+    int sock = (int)(intptr_t)csock;
     struct pollfd cfds[1];
     cfds[0].fd = sock;
     cfds[0].events = POLLIN;
     int n_res;
 
-    int executed = 0;  // check if a shell command has been issued
+    // prepare to monitor shell command execution in this session
+    int status = 0;     // catch a child process exit status
+    int executed = 0;   // check if a shell command has been issued
+    char output[4096];  // buffer to store the shell command output
+    int pipefd[2];      // create a pipe for IPC
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        strike(sock, &s_sem);
+    }
 
-    // repeatedly receive a request from client and handle it
+    // repeatedly receive a client command and handle it
     while (1) {
-        send("%s", "> ");  // change send
-        if ((n_res = poll(cfds, 1, 60000)) != 0) {  // time out after 1 minute of inactivity
+        if (send(sock, prompt, strlen(prompt), 0) < 0) {
+            if (errno == EPIPE) {
+                printf("connection closed by client on socket %d\n", sock);
+            }
+            perror("send");
+            strike(sock, &s_sem);
+        }
+
+        if ((n_res = poll(cfds, 1, 300000)) != 0) {  // time out after 5 minutes of inactivity
             if (n_res < 0) {
                 perror("poll");
                 strike(sock, &s_sem);  // worker go on strike
@@ -583,106 +615,105 @@ void* s_worker(void* csock) {
             }
 
             // replace the newline
-            if (strlen(req) > 0 && req[strlen(req) - 1] == '\n') {
-                req[strlen(req) - 1] = '\0';
+            int slen = strlen(req);
+            if (slen > 0 && req[slen - 1] == '\n') {
+                req[slen - 1] = '\0';
+                if (req[slen - 2] == '\r') req[slen - 2] = '\0';  // windows CRLF \r\n
             }
             if (VERBOSE_MODE) {
                 printf("received client request: %s\n", req);
+                fflush(stdout);
             }
 
-            // if client just pressed Enter('\n'), start over
-            if (strlen(req) == 0) {
-                continue;
-            }
-
-            // execute command from client
-            // // create a pipe
-            // int pipefd[2];
-            // if (pipe(pipefd) == -1) {
-            //     perror("pipe");
-            //     exit(1);
-            // }
-            //
-            // int status = 0;
-            // pid_t child = fork();
-            //
-            // if (child == -1) {
-            //     perror("fork");
-            //     exit(1);
-            // }
-            // // fork() and exec() the shell command in child process
-            // else if (child == 0) {  // child
-            //     while ((dup2(pipefd[1], STDOUT_FILENO) == -1) && (errno == EINTR)) {}  // redirect child's STDOUT to pipefd[1]
-            //     while ((dup2(pipefd[1], STDERR_FILENO) == -1) && (errno == EINTR)) {}  // redirect child's STDERR to pipefd[1]
-            //     close(pipefd[0]);
-            //     close(pipefd[1]);
-            //     execve(command, argv, envp);  // attempt to execute with no path prefix ...
-            //     for (size_t i = 0; path[i] != 0; i++) {  // then try with path prefixed
-            //         char* cp = new char[strlen(path[i]) + strlen(command) + 2];
-            //         sprintf(cp, "%s/%s", path[i], command);
-            //         execve(cp, argv, envp);
-            //         delete[] cp;
-            //     }
-            //     // if execve() failed and errno set
-            //     char* message = new char[strlen(command) + 10];
-            //     sprintf(message, "exec %s", command);
-            //     perror(message);
-            //     delete[] message;
-            //     exit(errno);  // exit so that the function does not return twice!
-            //     perror("execve");
-            //     _exit(1);
-            // }
-            // // wait for child termination and retrieve its output
-            // else {  // parent
-            //     close(pipefd[1]);
-            //     char buf[4096];
-            //     while (1) {
-            //         int n_bytes = readLine(pipefd[0], buf, sizeof(buf));
-            //         if (n_bytes == -1) {
-            //             if (errno == EINTR) { continue; }
-            //             perror("server: readLine");
-            //             exit(1);
-            //         }
-            //         else if (n_bytes == 0 || n_bytes == -2) {  // EOF
-            //             break;
-            //         }
-            //     }
-            //     close(pipefd[0]);
-            //     waitpid(child, &status, 0);
-            // }
-
+            // if client wants to quit, exit thread
             if (strcmp(req, "quit") == 0) {
+                printf("closing client connection on socket %d\n", sock);
+                fflush(stdout);
                 strike(sock, &s_sem);  // bye
             }
 
-            FILE* fp;
-            char output[4096];
-            memset(output, 0, sizeof(output));
+            // parse client request to obtain argv[]
+            char* envp[] = { NULL };
+            char* tokens[strlen(req)];
+            char** argv = tokens;
+            int argc = tokenize(req, argv, strlen(req));
+            argv[argc] = 0;
 
-            if (strcmp(req, "CPRINT") == 0) {
+            // if client just pressed Enter('\n'), start over
+            if (strlen(argv[0]) == 0) {
+                continue;
+            }
+
+            // now execute client command
+            if (strcmp(argv[0], "CPRINT") == 0) {
+                // send shell output to client
                 if (executed == 0) {
                     echos[echo_id].status = "ERR";
                     echos[echo_id].code = EIO;
                     echos[echo_id].message = "No command has been issued";
                 }
                 else {
-                    while (fgets(output, sizeof(output), fp) != NULL) {  // read shell output from fp
-                        send("%s", output);  // send shell output to client
+                    if (send(sock, output, strlen(output), 0) < 0) {
+                        perror("send");
+                        echos[echo_id].status = "FAIL";
+                        echos[echo_id].code = -7;
+                        echos[echo_id].message = "Failed to send output";
+                    }
+                    else {
+                        echos[echo_id].status = "OK";
+                        echos[echo_id].code = 0;
+                        echos[echo_id].message = "Last executed shell output sent";
                     }
                 }
             }
             else {
-                fp = popen(req, "r");  // execute the command in one line, MT-safe
-                if (fp == NULL) {
+                pid_t child = fork();
+
+                // child exec() the shell command
+                if (child == 0) {
+                    close(1);  // stdout
+                    close(2);  // stderr
+                    dup(pipefd[1]);  // redirect child's STDOUT to pipefd[1]
+                    dup(pipefd[1]);  // redirect child's STDERR to pipefd[1]
+                    close(pipefd[0]);
+                    execve(argv[0], argv, envp);  // attempt to execute with no path prefix ...
+                    for (size_t i = 0; path[i] != 0; i++) {  // then try with path prefixed
+                        char cp[256];
+                        memset(cp, 0, sizeof(cp));
+                        sprintf(cp, "%s/%s", path[i], argv[0]);
+                        execve(cp, argv, envp);
+                    }
+                    perror("execve");
+                    _exit(-1);  // exit child if execve() failed
+                }
+
+                // parent wait() for child's output
+                else {
+                    memset(output, 0, sizeof(output));  // flush output buffer
+                    while (1) {
+                        int n_bytes = readtimeout(pipefd[0], output, sizeof(output), 100);  // non-block read()
+                        if (n_bytes == -1) {
+                            if (errno == EINTR) { continue; }
+                            perror("readtimeout");
+                            strike(sock, &s_sem);
+                        }
+                        else if (n_bytes == 0 || n_bytes == -2) {  // EOF, no data in the pipe
+                            break;
+                        }
+                    }
+                    waitpid(child, &status, 0);
+                }
+
+                // only parent continues
+                if (strlen(output) == 0) {
                     echos[echo_id].status = "FAIL";
                     echos[echo_id].code = -4;
                     echos[echo_id].message = "Failed to execute the command";
                 }
                 else {
                     executed = 1;  // command executed, but may still have an error condition
-                    int rc = pclose(fp);  // exit status of the command
-                    echos[echo_id].code = rc;
-                    if (rc = 0) {
+                    echos[echo_id].code = status;
+                    if (status == 0) {
                         echos[echo_id].status = "OK";
                         echos[echo_id].message = "Command executed successfully";
                     }
@@ -702,6 +733,7 @@ void* s_worker(void* csock) {
             sprintf(res + strlen(res), " %s", echos[echo_id].message);
             int len = strlen(res);
             res[len] = '\n';
+            len++;
 
             if (sendall(sock, res, &len) == -1) {
                 perror("sendall3");  // SIGPIPE already handled in main()
@@ -711,13 +743,16 @@ void* s_worker(void* csock) {
         }
 
         else {  // will reach here only if poll() timed out
-            char* farewell = "your session has expired";
+            const char* farewell = "your session has expired\n";
             int len = strlen(farewell);
             if (sendall(sock, farewell, &len) == -1) {  // say good-bye to client
                 perror("sendall4");
                 printf("only %d bytes of data have been sent!\n", len);
                 strike(sock, &s_sem);
             }
+
+            printf("closing client connection on socket %d\n", sock);
+            fflush(stdout);
 
             // close socket
             shutdown(sock, SHUT_WR);
@@ -735,10 +770,10 @@ void* f_worker(void* csock) {
     sem_wait(&f_sem);
 
     // obtain an entry in echos[] specified by echo_id, and increment n_echos, MT-safe
-    pthread_mutex_lock(mutex);
+    pthread_mutex_lock(&mutex);
     int echo_id = n_echo;
     n_echo++;
-    pthread_mutex_unlock(mutex);
+    pthread_mutex_unlock(&mutex);
     echos[echo_id].tid = pthread_self();
 
     // add client socket to poll()
@@ -869,28 +904,24 @@ void* f_worker(void* csock) {
     pthread_exit((void*)0);
 }
 
-
-
-
-
 int main(int argc, char* argv[]) {
-    int DEBUG_MODE = 1;
-    int DELAY_MODE = 0;
-    int VERBOSE_MODE = 1;
-    char* s_port = 10144;  // default shell server port number, echo $((8000 + `id -u`))
-    char* f_port = 10145;  // default file server port number, echo $((8001 + `id -u`))
+    const char* s_port = "10144";  // default shell server port number, echo $((8000 + `id -u`))
+    const char* f_port = "10145";  // default file server port number, echo $((8001 + `id -u`))
 
     // tokenize command line switches and arguments
     // ...
     // if (argv[i]) { s_port = argv[i]; }
     // if (argv[j]) { f_port = argv[j]; }
+    // if (switch == 'd') { DEBUG_MODE = 1; }
+    // if (switch == 'D') { DELAY_MODE = 1; }
+    // if (switch == 'v') { VERBOSE_MODE = 1; }
 
     // startup server
     if (!DEBUG_MODE) {
         // start server in background
         if (fork() == 0) {
             if (init_server() != 0) {
-                printf("failed to initialize server (%d)\n");
+                printf("failed to initialize server\n");
                 exit(1);
             }
         }
@@ -901,7 +932,7 @@ int main(int argc, char* argv[]) {
     else {
         // start server in foreground
         if (init_server() != 0) {
-            printf("failed to initialize server (%d)\n");
+            printf("failed to initialize server\n");
             exit(1);
         }
     }
@@ -922,8 +953,10 @@ int main(int argc, char* argv[]) {
 
     // add master sockets to poll()
     struct pollfd pfds[2];
-    pfds[0] = { .fd = ssock, .events = POLLIN };
-    pfds[1] = { .fd = fsock, .events = POLLIN };
+    pfds[0].fd = ssock;
+    pfds[0].events = POLLIN;
+    pfds[1].fd = fsock;
+    pfds[1].events = POLLIN;
 
     // launch the monitor thread
     // pthread_t mid;
@@ -962,7 +995,7 @@ int main(int argc, char* argv[]) {
 
                 if (pfds[i].fd == ssock) {
                     // invoke a new shell worker thread
-                    if (pthread_create(&sid[s], &attr, s_worker, (void*)csock) != 0) {
+                    if (pthread_create(&sid[s], &attr, s_worker, (void*)(intptr_t)csock) != 0) {
                         perror("pthread_create");
                         exit(6);
                     }
@@ -970,7 +1003,7 @@ int main(int argc, char* argv[]) {
                 }
                 else {
                     // invoke a new file worker thread
-                    if (pthread_create(&fid[f], &attr, f_worker, (void*)csock) != 0) {
+                    if (pthread_create(&fid[f], &attr, f_worker, (void*)(intptr_t)csock) != 0) {
                         perror("pthread_create");
                         exit(7);
                     }
