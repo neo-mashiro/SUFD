@@ -28,8 +28,13 @@ int checkDigit(const char* str) {
     if (buf[len - 1] == '\n') {
         buf[len - 1] = '\0';
     }
-    for (int i = 0; i < len; i++) {
-        if (!isdigit(buf[i])) { return 0; }
+    if (!isdigit(buf[0]) && buf[0] != '-') {  // first char is either digit or minus sign '-'
+        return 0;
+    }
+    for (int i = 1; i < len; i++) {
+        if (!isdigit(buf[i])) {
+            return 0;
+        }
     }
     return 1;
 }

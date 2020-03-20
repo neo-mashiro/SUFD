@@ -9,6 +9,7 @@
 **             POSIX thread libraries - http://www.yolinux.com/TUTORIALS/LinuxTutorialPosixThreads.html
 */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,16 +35,15 @@
 #define N 1000
 #define MEGEXTRA 1000000
 
-int DEBUG_MODE = 1;
+int DEBUG_MODE = 0;
 int DELAY_MODE = 0;
-int VERBOSE_MODE = 1;
-const char* path[] = {"/bin", "/usr/bin", 0};
+int VERBOSE_MODE = 0;
+char* s_port = "9001";  // default shell service port number, use echo $((8000 + `id -u`)) = 10144 on linux.bishops.ca
+char* f_port = "9002";  // default file service port number, use echo $((8001 + `id -u`)) = 10145 on linux.bishops.ca
 const char* prompt = "> ";
+const char* path[] = {"/bin", "/usr/bin", 0};
 
 // then update as per Bruda's slide
-
-// if DEBUG, use assert(cond); and     sched_yield();     sleep(3); suspends execution
-
 
 struct monitor_t {          // struct for monitor data
     pthread_mutex_t m_mtx;  // monitor mutex
@@ -51,10 +51,10 @@ struct monitor_t {          // struct for monitor data
     int max_conn;           // highest historical number of connections
     int tot_conn;           // total number of connections served
     int tot_time;           // total processing time
-} monitor;
+} stats;
 
 struct lock_t {               // struct for file access control
-    char* f_name;             // file name (path)
+    char f_name[256];         // file name (path)
     int fd;                   // file descriptor (identifier)
     pthread_mutex_t f_mtx;    // file access mutex
     pthread_cond_t f_cond;    // file access condition variable
@@ -169,7 +169,7 @@ int init_server() {
     sem_init(&s_sem, 0, N_THREADS);
     sem_init(&f_sem, 0, N_THREADS);
     pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&monitor.m_mtx, NULL);
+    pthread_mutex_init(&stats.m_mtx, NULL);
     pthread_attr_init(&attr);
     size_t stacksize = sizeof(double) * N * N + MEGEXTRA;
     pthread_attr_setstacksize(&attr, stacksize);
@@ -193,7 +193,7 @@ int exit_server() {
     sem_destroy(&f_sem);
     pthread_attr_destroy(&attr);
     pthread_mutex_destroy(&mutex);
-    pthread_mutex_destroy(&monitor.m_mtx);
+    pthread_mutex_destroy(&stats.m_mtx);
 
     for (int i = 0; i < n_lock; i++) {
         unlink(locks[i].f_name);
@@ -203,23 +203,6 @@ int exit_server() {
     }
     pthread_exit(NULL);  // exit the main thread
 }
-
-/*
-void* monitor(void*) {
-    while (1) {
-        sleep(1200);  // report server statistics every 2 minutes
-        pthread_mutex_lock(&stats.mutex);
-        time_t now = time(0);  // create a timer pointer
-        printf("Statraks: %s\n", ctime(&now));  // local calendar time
-        printf("Statraks: total number of connections served: %d\n", stats.tot_conn);
-        printf("Statraks: number of currently active connections: %d\n", stats.num_conn);
-        printf("Statraks: highest historical number of connections: %d\n", stats.max_conn);
-        printf("Statraks: average connection time: %d seconds\n", (int)((float)stats.tot_time/(float)max(stats.tot_conn, 1)));
-        pthread_mutex_unlock(&stats.mutex);
-    }
-    pthread_exit(NULL);
-}
-*/
 
 int opener(int argc, char** argv, int echo_id) {
     // validate request format
@@ -246,7 +229,7 @@ int opener(int argc, char** argv, int echo_id) {
         return 0;
     }
 
-    if (fcntl(fd, F_SETLK, &fl) == -1) {  // file descriptors of the same file in the same process share the lock
+    if (fcntl(fd, F_OFD_SETLK, &fl) == -1) {  // open file description locks for synchronization among threads
         close(fd);  // when file already opened, we just close this new fd and use the previously opened fd
         echos[echo_id].status = "ERR";
         echos[echo_id].message = "file already opened";
@@ -267,7 +250,8 @@ int opener(int argc, char** argv, int echo_id) {
     pthread_mutex_unlock(&mutex);
 
     // update shared struct lock_t, prepare file for future manipulation
-    locks[lock_id].f_name = filename;
+    memset(&locks[lock_id].f_name, 0, sizeof(locks[lock_id].f_name));
+    strcpy(locks[lock_id].f_name, filename);  // don't use char* !!!!
     locks[lock_id].fd = fd;
     locks[lock_id].n_reader = 0;
     locks[lock_id].n_writer = 0;
@@ -296,18 +280,12 @@ int seeker(int argc, char** argv, int echo_id, int lock_id) {
         echos[echo_id].message = "invalid argument(s)";
         return 0;
     }
-    if (argv[2] < 0) {
-        echos[echo_id].status = "FAIL";
-        echos[echo_id].code = -6;
-        echos[echo_id].message = "invalid offset value";
-        return 0;
-    }
 
-    int identifier = (int)(intptr_t)argv[1];
-    int offset = (int)(intptr_t)argv[2];
-    struct lock_t lock = locks[lock_id];
+    int identifier = atoi(argv[1]);
+    off_t offset = atoi(argv[2]);  // offset can be negative!
+    struct lock_t* lock = &locks[lock_id];
 
-    if (identifier != lock.fd || lock.fd <= 0) {
+    if (identifier != lock->fd || lock->fd <= 0) {
         echos[echo_id].status = "ERR";
         echos[echo_id].code = ENOENT;
         echos[echo_id].message = "invalid identifier, no such file or directory";
@@ -315,16 +293,16 @@ int seeker(int argc, char** argv, int echo_id, int lock_id) {
     }
 
     // waiting for resources
-    pthread_mutex_lock(&lock.f_mtx);
-    while (lock.n_writer > 0) {
-        pthread_cond_wait(&lock.f_cond, &lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    while (lock->n_writer > 0) {
+        pthread_cond_wait(&lock->f_cond, &lock->f_mtx);
     }
-    lock.n_reader++;
-    pthread_mutex_unlock(&lock.f_mtx);
+    lock->n_reader++;  // seeking is the same as reading
+    pthread_mutex_unlock(&lock->f_mtx);
 
-    // seeking... essentially, seeking is just the same as reading
-    // each distinct opened fd of this file has an independent seek pointer
-    if (lseek(identifier, offset, SEEK_CUR) == -1) {  // lseek() is atomic just like read() and write()
+    // seeking... all threads share one fd and one seek pointer
+    int pos = lseek(identifier, offset, SEEK_CUR);  // position of the seek pointer
+    if (pos == -1) {  // lseek() is atomic just like read() and write()
         echos[echo_id].status = "FAIL";
         echos[echo_id].code = errno;
         echos[echo_id].message = "system call lseek() returns -1";
@@ -332,15 +310,18 @@ int seeker(int argc, char** argv, int echo_id, int lock_id) {
     }
 
     // seeking finished
-    pthread_mutex_lock(&lock.f_mtx);
-    lock.n_reader--;
-    pthread_cond_broadcast(&lock.f_cond);
-    pthread_mutex_unlock(&lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    lock->n_reader--;
+    pthread_cond_broadcast(&lock->f_cond);
+    pthread_mutex_unlock(&lock->f_mtx);
 
     // success response
     echos[echo_id].status = "OK";
     echos[echo_id].code = 0;
-    sprintf(echos[echo_id].message, "seek pointer advanced by %d bytes", offset);
+    char temp[100];
+    memset(temp, 0, sizeof(temp));
+    sprintf(temp, "seek pointer is now %d bytes from the beginning of the file", pos);
+    echos[echo_id].message = temp;
 
     return 0;
 }
@@ -359,18 +340,19 @@ int reader(int argc, char** argv, int echo_id, int lock_id) {
         echos[echo_id].message = "invalid argument(s)";
         return 0;
     }
-    if (argv[2] < 0) {
+
+    int identifier = atoi(argv[1]);
+    int len = atoi(argv[2]);
+    struct lock_t* lock = &locks[lock_id];
+
+    if (len < 0) {
         echos[echo_id].status = "FAIL";
         echos[echo_id].code = -6;
         echos[echo_id].message = "invalid length value";
         return 0;
     }
 
-    int identifier = (int)(intptr_t)argv[1];
-    int len = (int)(intptr_t)argv[2];
-    struct lock_t lock = locks[lock_id];
-
-    if (identifier != lock.fd || lock.fd <= 0) {
+    if (identifier != lock->fd || lock->fd <= 0) {
         echos[echo_id].status = "ERR";
         echos[echo_id].code = ENOENT;
         echos[echo_id].message = "invalid identifier, no such file or directory";
@@ -378,16 +360,21 @@ int reader(int argc, char** argv, int echo_id, int lock_id) {
     }
 
     // waiting for resources
-    pthread_mutex_lock(&lock.f_mtx);
-    while (lock.n_writer > 0) {
-        pthread_cond_wait(&lock.f_cond, &lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    while (lock->n_writer > 0) {
+        pthread_cond_wait(&lock->f_cond, &lock->f_mtx);
     }
-    lock.n_reader++;
-    pthread_mutex_unlock(&lock.f_mtx);
+    lock->n_reader++;
+    pthread_mutex_unlock(&lock->f_mtx);
 
     // reading...
+    if (DELAY_MODE) {
+        printf("client session %d starts reading %s...\n", echo_id, lock->f_name);
+        sleep(3);
+    }
     char buf[4096];
-    int n = read(lock.fd, buf, len);
+    memset(buf, 0, sizeof(buf));
+    int n = read(lock->fd, buf, len);
     if (n == -1) {
         echos[echo_id].status = "FAIL";
         echos[echo_id].code = errno;
@@ -397,12 +384,15 @@ int reader(int argc, char** argv, int echo_id, int lock_id) {
     if (buf[strlen(buf) - 1] == '\n') {
         buf[strlen(buf) - 1] = '\0';
     }
+    if (DELAY_MODE) {
+        printf("client session %d finished reading %s ...\n", echo_id, lock->f_name);
+    }
 
     // reading finished
-    pthread_mutex_lock(&lock.f_mtx);
-    lock.n_reader--;
-    pthread_cond_broadcast(&lock.f_cond);
-    pthread_mutex_unlock(&lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    lock->n_reader--;
+    pthread_cond_broadcast(&lock->f_cond);
+    pthread_mutex_unlock(&lock->f_mtx);
 
     // success response
     echos[echo_id].status = "OK";
@@ -427,12 +417,12 @@ int writer(int argc, char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = (int)(intptr_t)argv[1];
-    const char* buf = argv[2];
+    int identifier = atoi(argv[1]);
+    char* buf = argv[2];
 
-    struct lock_t lock = locks[lock_id];
+    struct lock_t* lock = &locks[lock_id];
 
-    if (identifier != lock.fd || lock.fd <= 0) {
+    if (identifier != lock->fd || lock->fd <= 0) {
         echos[echo_id].status = "ERR";
         echos[echo_id].code = ENOENT;
         echos[echo_id].message = "invalid identifier, no such file or directory";
@@ -440,20 +430,24 @@ int writer(int argc, char** argv, int echo_id, int lock_id) {
     }
 
     // waiting for resources
-    pthread_mutex_lock(&lock.f_mtx);
-    while (lock.n_reader > 0 || lock.n_writer > 0) {
-        pthread_cond_wait(&lock.f_cond, &lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    while (lock->n_reader > 0 || lock->n_writer > 0) {
+        pthread_cond_wait(&lock->f_cond, &lock->f_mtx);
     }
-    lock.n_writer++;
-    pthread_mutex_unlock(&lock.f_mtx);
+    lock->n_writer++;
+    pthread_mutex_unlock(&lock->f_mtx);
 
     // writing...
+    if (DELAY_MODE) {
+        printf("client session %d starts writing %s ...\n", echo_id, lock->f_name);
+        sleep(6);
+    }
     int len = strlen(buf);
     int total = 0;   // bytes sent
     int left = len;  // bytes left
     int n;
     while (total < left) {
-        n = write(lock.fd, buf + total, left);  // update seek
+        n = write(lock->fd, buf + total, left);  // update seek
         if (n == -1) {
             echos[echo_id].status = "FAIL";
             echos[echo_id].code = errno;
@@ -463,17 +457,23 @@ int writer(int argc, char** argv, int echo_id, int lock_id) {
         total += n;
         left -= n;
     }
+    if (DELAY_MODE) {
+        printf("client session %d finished writing %s ...\n", echo_id, lock->f_name);
+    }
 
     // writing finished
-    pthread_mutex_lock(&lock.f_mtx);
-    lock.n_writer--;
-    pthread_cond_broadcast(&lock.f_cond);
-    pthread_mutex_unlock(&lock.f_mtx);
+    pthread_mutex_lock(&lock->f_mtx);
+    lock->n_writer--;
+    pthread_cond_broadcast(&lock->f_cond);
+    pthread_mutex_unlock(&lock->f_mtx);
 
     // success response
     echos[echo_id].status = "OK";
     echos[echo_id].code = 0;
-    sprintf(echos[echo_id].message, "wrote %d bytes data to the file", total);
+    char temp[100];
+    memset(temp, 0, sizeof(temp));
+    sprintf(temp, "wrote %d bytes data to the file", total);
+    echos[echo_id].message = temp;
 
     return 0;
 }
@@ -493,10 +493,10 @@ int closer(int argc, char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
-    int identifier = (int)(intptr_t)argv[1];
-    struct lock_t lock = locks[lock_id];
+    int identifier = atoi(argv[1]);
+    struct lock_t* lock = &locks[lock_id];
 
-    if (identifier != lock.fd || lock.fd <= 0) {
+    if (identifier != lock->fd || lock->fd <= 0) {
         echos[echo_id].status = "ERR";
         echos[echo_id].code = ENOENT;
         echos[echo_id].message = "invalid identifier, no such file or directory";
@@ -510,7 +510,7 @@ int closer(int argc, char** argv, int echo_id, int lock_id) {
     fl.l_start = 0;
     fl.l_len = 0;
 
-    if (fcntl(identifier, F_SETLK, &fl) == -1) {  // unlock file
+    if (fcntl(identifier, F_OFD_SETLK, &fl) == -1) {  // unlock file
         echos[echo_id].status = "FAIL";
         echos[echo_id].code = errno;
         echos[echo_id].message = "cannot close (unlock) file";
@@ -526,6 +526,10 @@ int closer(int argc, char** argv, int echo_id, int lock_id) {
         return 0;
     }
 
+    // upon close() success, must reset the locks[lock_id] entry to avoid corrupt behavior in other threads
+    locks[lock_id].fd = 0;
+    memset(&locks[lock_id].f_name, 0, sizeof(locks[lock_id].f_name));
+
     // success response
     echos[echo_id].status = "OK";
     echos[echo_id].code = 0;
@@ -534,7 +538,7 @@ int closer(int argc, char** argv, int echo_id, int lock_id) {
     // upon success of a close() command, we should also safely decrement n_lock
     // and remove the corresponding entry from locks[]. Unfortunately, it's hard
     // to do so in C with merely a static-allocated C-array given the complexity
-    // of a multithreading sychronization context. It would be much nicer if dynamic
+    // of a multithreading synchronization context. It would be much nicer if dynamic
     // associated data structures such as C++ std::unordered_map is used instead
     // but again atomicity and MT-safe features must be guaranteed.
     // In this implementation, an entry once polluted will not be reusable later
@@ -551,6 +555,21 @@ void strike(int sockfd, sem_t* sem_mutex) {
     close(sockfd);
     sem_post(sem_mutex);
     pthread_exit((void*)-1);  // exit status will not be received by pthread_join() though...
+}
+
+void* monitor(void* omitted) {
+    while (1) {
+        sleep(1200);  // report server statistics every 2 minutes
+        pthread_mutex_lock(&stats.m_mtx);
+        time_t now = time(0);  // create a timer pointer
+        printf("monitor: %s\n", ctime(&now));  // local calendar time
+        printf("monitor: total number of connections served: %d\n", stats.tot_conn);
+        printf("monitor: number of currently active connections: %d\n", stats.num_conn);
+        printf("monitor: highest historical number of connections: %d\n", stats.max_conn);
+        printf("monitor: average connection time: %d seconds\n", (int)((float)stats.tot_time/(float)(stats.tot_conn + 1)));
+        pthread_mutex_unlock(&stats.m_mtx);
+    }
+    pthread_exit(NULL);
 }
 
 void* s_worker(void* csock) {
@@ -777,144 +796,180 @@ void* f_worker(void* csock) {
     echos[echo_id].tid = pthread_self();
 
     // add client socket to poll()
-    int sock = *((int*)csock);
+    int sock = (int)(intptr_t)csock;
     struct pollfd cfds[1];
     cfds[0].fd = sock;
     cfds[0].events = POLLIN;
     int n_res;
 
+    int lock_id;  // specify an entry of struct lock_t in locks[]
+
     // repeatedly receive a request from client and handle it
-    while ((n_res = poll(cfds, 1, 60000)) != 0) {  // time out after 1 minute of inactivity
-        if (n_res < 0) {
-            perror("poll");
-            strike(sock, &f_sem);  // worker go on strike
-        }
-
-        char req[256];
-        memset(req, 0, sizeof(req));
-        int n_bytes;  // number of bytes received
-
-        // receive a client request
-        if (cfds[0].revents & POLLIN) {
-            n_bytes = recv(sock, req, sizeof(req) - 1, 0);
-            if (n_bytes == 0) {
+    while (1) {
+        if (send(sock, prompt, strlen(prompt), 0) < 0) {
+            if (errno == EPIPE) {
                 printf("connection closed by client on socket %d\n", sock);
-                strike(sock, &f_sem);
             }
-            else if (n_bytes < 0) {
-                perror("recv");
-                strike(sock, &f_sem);
-            }
-        }
-
-        // replace the newline
-        if (strlen(req) > 0 && req[strlen(req) - 1] == '\n') {
-            req[strlen(req) - 1] = '\0';
-        }
-        if (VERBOSE_MODE) {
-            printf("received client request: %s\n", req);
-        }
-
-        // parse client request to obtain argv[]
-        char* tokens[strlen(req)];
-        char** argv = tokens;
-        int argc = tokenize(req, argv, strlen(req));
-        argv[argc] = 0;
-
-        // if client just pressed Enter('\n'), start over
-        if (strlen(argv[0]) == 0) {
-            continue;
-        }
-
-        // execute command from client
-        int lock_id;  // specify an entry of struct lock_t in locks[]
-
-        if (strcmp(argv[0], "FOPEN") == 0) {
-            lock_id = opener(argc, argv, echo_id);  // open the file and assign a lock_id
-            if (lock_id < 0) {
-                perror("opener");
-                strike(sock, &f_sem);
-            }
-        }
-        else if (strcmp(argv[0], "FSEEK") == 0) {
-            if ((seeker(argc, argv, echo_id, lock_id)) != 0) {
-                perror("seeker");
-                strike(sock, &f_sem);
-            }
-        }
-        else if (strcmp(argv[0], "FREAD") == 0) {
-            if ((reader(argc, argv, echo_id, lock_id)) != 0) {
-                perror("reader");
-                strike(sock, &f_sem);
-            }
-        }
-        else if (strcmp(argv[0], "FWRITE") == 0) {
-            if ((writer(argc, argv, echo_id, lock_id)) != 0) {
-                perror("writer");
-                strike(sock, &f_sem);
-            }
-        }
-        else if (strcmp(argv[0], "FCLOSE") == 0) {
-            if ((closer(argc, argv, echo_id, lock_id)) != 0) {
-                perror("closer");
-                strike(sock, &f_sem);
-            }
-        }
-        else if (strcmp(argv[0], "quit") == 0) {
-            strike(sock, &f_sem);  // bye
-        }
-        else {  // invalid command
-            echos[echo_id].status = "FAIL";
-            echos[echo_id].code = -9;
-            echos[echo_id].message = "invalid request";
-        }
-
-        // send response to client
-        char res[4096];
-        memset(res, 0, sizeof(res));
-
-        sprintf(res, "%s", echos[echo_id].status);
-        sprintf(res + strlen(res), " %d", echos[echo_id].code);
-        sprintf(res + strlen(res), " %s", echos[echo_id].message);
-        int len = strlen(res);
-        res[len] = '\n';
-
-        if (sendall(sock, res, &len) == -1) {
-            perror("sendall");  // SIGPIPE already handled in main()
-            printf("only %d bytes of data have been sent!\n", len);
+            perror("send");
             strike(sock, &f_sem);
         }
+
+        if ((n_res = poll(cfds, 1, 300000)) != 0) {  // time out after 5 minutes of inactivity
+            if (n_res < 0) {
+                perror("poll");
+                strike(sock, &f_sem);  // worker go on strike
+            }
+
+            char req[256];
+            memset(req, 0, sizeof(req));
+            int n_bytes = 0;  // number of bytes received
+
+            // receive a client request
+            if (cfds[0].revents & POLLIN) {
+                n_bytes = recv(sock, req, sizeof(req) - 1, 0);
+                if (n_bytes == 0) {
+                    printf("connection closed by client on socket %d\n", sock);
+                    strike(sock, &f_sem);
+                }
+                else if (n_bytes < 0) {
+                    perror("recv");
+                    strike(sock, &f_sem);
+                }
+            }
+
+            // replace the newline
+            int slen = strlen(req);
+            if (slen > 0 && req[slen - 1] == '\n') {
+                req[slen - 1] = '\0';
+                if (req[slen - 2] == '\r') req[slen - 2] = '\0';  // windows CRLF \r\n
+            }
+            if (VERBOSE_MODE) {
+                printf("received client request: %s\n", req);
+            }
+
+            // parse client request to obtain argv[]
+            char* tokens[strlen(req)];
+            char** argv = tokens;
+            int argc = tokenize(req, argv, strlen(req));
+            argv[argc] = 0;
+
+            // if client just pressed Enter('\n'), start over
+            if (strlen(argv[0]) == 0) {
+                continue;
+            }
+
+            // execute command from client
+            if (strcmp(argv[0], "FOPEN") == 0) {
+                lock_id = opener(argc, argv, echo_id);  // open the file and assign a lock_id
+                if (lock_id < 0) {
+                    perror("opener");
+                    strike(sock, &f_sem);
+                }
+            }
+            else if (strcmp(argv[0], "FSEEK") == 0) {
+                if ((seeker(argc, argv, echo_id, lock_id)) != 0) {
+                    perror("seeker");
+                    strike(sock, &f_sem);
+                }
+            }
+            else if (strcmp(argv[0], "FREAD") == 0) {
+                if ((reader(argc, argv, echo_id, lock_id)) != 0) {
+                    perror("reader");
+                    strike(sock, &f_sem);
+                }
+            }
+            else if (strcmp(argv[0], "FWRITE") == 0) {
+                if ((writer(argc, argv, echo_id, lock_id)) != 0) {
+                    perror("writer");
+                    strike(sock, &f_sem);
+                }
+            }
+            else if (strcmp(argv[0], "FCLOSE") == 0) {
+                if ((closer(argc, argv, echo_id, lock_id)) != 0) {
+                    perror("closer");
+                    strike(sock, &f_sem);
+                }
+            }
+            else if (strcmp(argv[0], "quit") == 0) {
+                strike(sock, &f_sem);  // bye
+            }
+            else {  // invalid command
+                echos[echo_id].status = "FAIL";
+                echos[echo_id].code = -9;
+                echos[echo_id].message = "invalid request";
+            }
+
+            // send response to client
+            char res[4096];
+            memset(res, 0, sizeof(res));
+
+            sprintf(res, "%s", echos[echo_id].status);
+            sprintf(res + strlen(res), " %d", echos[echo_id].code);
+            sprintf(res + strlen(res), " %s", echos[echo_id].message);
+            int len = strlen(res);
+            res[len] = '\n';
+            len++;
+
+            if (sendall(sock, res, &len) == -1) {
+                perror("sendall");  // SIGPIPE already handled in main()
+                printf("only %d bytes of data have been sent!\n", len);
+                strike(sock, &f_sem);
+            }
+        }
+        else {  // will reach here only if poll() timed out
+            const char* farewell = "your session has expired\n";
+            int len = strlen(farewell);
+            if (sendall(sock, farewell, &len) == -1) {  // say good-bye to client
+                perror("sendall2");
+                printf("only %d bytes of data have been sent!\n", len);
+                strike(sock, &f_sem);
+            }
+
+            printf("closing client connection on socket %d\n", sock);
+            fflush(stdout);
+
+            // close socket
+            shutdown(sock, SHUT_WR);
+            close(sock);
+
+            // release semaphore and exit thread with status 0
+            sem_post(&f_sem);
+            pthread_exit((void*)0);
+        }
     }
-
-    // will reach here only if poll() timed out
-    char* farewell = "your session has expired";
-    int len = strlen(farewell);
-    if (sendall(sock, farewell, &len) == -1) {  // say good-bye to client
-        perror("sendall2");
-        printf("only %d bytes of data have been sent!\n", len);
-        strike(sock, &f_sem);
-    }
-
-    // close socket
-    shutdown(sock, SHUT_WR);
-    close(sock);
-
-    // release semaphore and exit thread
-    sem_post(&f_sem);
-    pthread_exit((void*)0);
 }
 
 int main(int argc, char* argv[]) {
-    const char* s_port = "10144";  // default shell server port number, echo $((8000 + `id -u`))
-    const char* f_port = "10145";  // default file server port number, echo $((8001 + `id -u`))
-
-    // tokenize command line switches and arguments
-    // ...
-    // if (argv[i]) { s_port = argv[i]; }
-    // if (argv[j]) { f_port = argv[j]; }
-    // if (switch == 'd') { DEBUG_MODE = 1; }
-    // if (switch == 'D') { DELAY_MODE = 1; }
-    // if (switch == 'v') { VERBOSE_MODE = 1; }
+    // parse command line switches and arguments
+    int copt = 0, err_switch = 0;
+    while ((copt = getopt(argc, argv, "dvDf:s:")) != -1) {
+        char c = (char)copt;
+        switch(c) {
+            case 'd':
+                DEBUG_MODE = 1;
+                break;
+            case 'D':
+                DELAY_MODE = 1;
+                break;
+            case 'v':
+                VERBOSE_MODE = 1;
+                break;
+            case 's':
+                s_port = optarg;
+                if (atoi(optarg) == 0) err_switch = 1;
+                break;
+            case 'f':
+                f_port = optarg;
+                if (atoi(optarg) == 0) err_switch = 1;
+                break;
+            case '?':
+                err_switch = 1;
+                break;
+        }
+    }
+    if (err_switch) {
+        fprintf(stderr, "Usage: %s [-d] [-D] [-s port_number] [-f port_number] [-v]\n", argv[0]);
+    }
 
     // startup server
     if (!DEBUG_MODE) {
@@ -1013,7 +1068,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // will never reach this apocalypse
+    // unreachable code, but just in case
     exit_server();
     return EXIT_SUCCESS;
 }

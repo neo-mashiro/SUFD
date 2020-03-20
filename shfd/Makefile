@@ -7,15 +7,15 @@ TARGET = shfd
 
 CXXFLAGS = -g -Wall -pedantic -pthread -I$(INC)
 
-SRCS = $(wildcard $(SRC)/*.cpp)
-OBJS = $(patsubst $(SRC)/%.cpp, $(OBJ)/%.o, $(SRCS))
+SRCS = $(wildcard $(SRC)/*.cc)
+OBJS = $(patsubst $(SRC)/%.cc, $(OBJ)/%.o, $(SRCS))
 
 $(TARGET): $(OBJS)
 	@echo "linking..."
 	$(CXX) $(CXXFLAGS) -o $@ $^
 	@echo "done!"
 
-$(OBJ)/%.o: $(SRC)/%.cpp
+$(OBJ)/%.o: $(SRC)/%.cc
 	@echo "compiling..."
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
