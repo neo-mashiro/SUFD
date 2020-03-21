@@ -1,131 +1,193 @@
 CS 464/564 Assignment 3
 by Wentao Lu, Yi Ren
 
+Project Overview
 
-Content
+Our 1200-LOC program implements a multiservice server which has a shell service and
+file service. Each client is handled in a single thread to allow for concurrency, the
+total number of threads is bounded by 128 using a semaphore(128).
 
-The content and structure tree of our project is shown below:
+The shell server is implemented using a fork()/execve() paradigm in a thread, where
+the child executes the command and writes output to a pipe, the parent reads (block)
+output from that pipe and waits for the child to finish. The output will only be
+sent to the client when a CPRINT command is issued.
 
-.
-├── rsshell        // executable in the root directory
-├── Makefile       // Makefile in the root directory
-├── README.md
-├
-├── build          // this folder contains all object files
-    ├── main.o
-    ├── utils.o
-├── doc            // this folder contains configuration files and notes
-    ├── shconfig
-├── include        // this folder contains all header files
-    ├── utils.h
-├── src            // this folder contains the source code
-    ├── main.cpp
-    ├── utils.cpp
-├── test           // this folder contains test files and output
-    ├── test
-    ├── testmore
+The file server handles file operations. When multiple client threads have race
+conditions on the same file, a mutex coupled with a conditional variable is used
+to ensure correct synchronization. Read operations are shared, while write operations
+are exclusive. However, operations on different files are independent from each other.
 
+In terms of the daemon, it runs in background, closes all file descriptors, redirects
+stdin to /dev/null, redirects stdout, stderr to the log file. It will lock the log
+file so that there can be only 1 copy of the server running. It also detaches itself
+from tty, move itself to a safe directory, sets its own group id and a umask, and
+write its process id and other information into the log file. All signals are ignored
+so that it will not crash, unless a SIGSTOP or SIGKILL have been raised.
 
-Project description
-
-This program implements a shell which continuously prompts for user input and
-then executes the command as requested. The program exits when user types in
-`! exit`. Commands can be executed either locally or remotely, in foreground
-or in background, depending on the input prefixes. In particular, the local
-command `! keepalive` turns on the keepalive mode for remote commands, which
-keeps a socket connection until a `! close` command is issued.
-
-When keepalive mode is off, each time a remote command is issued, the program
-will establish a new socket connection, interact with the server through this
-connection, and then close the connection. If the command is intended to be
-run in background, interaction is done in the child process where the socket
-connection is copied from the parent, the parent process closes its connection
-immediately and gives the prompt back to the user.
-
-When keepalive mode is on, a socket connection is fired up only once for the
-1st remote command, and all subsequent remote commands share this same socket
-until a local close command is issued. Other than that, nothing is different
-from what we mentioned above, except that the parent process of a background
-command would continue without closing the connection.
+All functionalities are implemented exactly as the handout's requirement, except that
+we have added another small feature: when a client has been inactive for 5 minutes,
+poll will time out and our server will exit that thread to close the client's session.
 
 
-Usage and Demo
+Usage
 
 make clean && make
-./rsshell
-
-! command    // this is a local foreground command
-! & command  // this is a local background command
-& ! command  // same as above, the order of "&" and "!" doesn't matter
-
-command      // this is a remote foreground command
-& command    // this is a remote background command
-
-! keepalive  // turn on keepalive mode
-! close      // turn off keepalive mode and disconnect all sockets
+./shfd [-d] [-D] [-s port_number] [-f port_number] [-v]
 
 
-Tests
+Passed tests and demos
 
-A snippet of our test output can be found at ./test/test
+o  if CPRINT is issued before any shell command has been successfully executed, error
+> CPRINT
+ERR 5 No command has been issued
 
-o  If the port number in shconfig is not between 0 and 65535, a "invalid port"
-   warning message will be printed to the console, the port number will be set
-   to 9001 by default, and a corresponding line will be appended to shconfig.
-o  A local command `! cmd` behaves exactly the same as in Assignment 1
-o  A local background command behaves exactly the same as in Assignment 1
-     ! & cmd
-     & ! cmd
-o  A remote command such as `hello world` connects to the server, receives
-     ACK 1: hello world
-     ACK 2: hello world
-   then closes the connection and gives prompt back to user
-o  A remote background command connects to the server and then immediately
-   closes the connection and gives prompt back to user. As soon as the server
-   responds, the responses are printed to the console, followed by a message
-     & cmd done (0)
-   which notifies us that the background command is done with exit code 0
-o  When a remote command `quit` is issued, server closes connection on its side
-o  When `& quit` is issued, server closes connection in our child process
-o  When two remote background commands are issued in rapid succession like
-     & a
-     & b
-   b's response is printed to the console as soon as it's available, even if
-   a's response is not yet completely finished, which looks like this:
-     ACK 1: a
-     ACK 1: b
-     ACK 2: a
-     ACK 2: b
-     & a done (0)
-     & b done (0)
-   Since the two commands use two different socket connections, this implies
-   that the server must have been implemented with some form of concurrency
-   that is able to handle multiple clients at the same time. Hence, we got
-   the responses back in an interleaved fashion.
-o  When keepalive is on, a local command `! cmd` is not affected
-o  When keepalive is on, a remote command such as `a` connects to the server,
-   prints out the server responses as before, but does not disconnects.
-o  Then, a local close command closes the living connection, all subsequent
-   remote commands behave just like in the normal mode.
-o  When keepalive is on, and two remote background commands are issued in
-   rapid succession like
-     & a
-     & b
-   b's response is not printed to the console until a's response is completely
-   finished. That is, b's response waits for a's response to finish, they are
-   printed to the console in strict sequence.
-   This is understandable because now we only have one connection with keepalive
-   in effect, the two commands share the same socket to interact with the server,
-   one of them must wait for the other, so an interleaved pattern will not be
-   observed.
+o  if CPRINT is issued correctly, last executed shell output will be returned
+> date
+OK 0 Command executed successfully
+> CPRINT
+Sat Mar 21 07:18:07 EDT 2020
+OK 0 Last executed shell output sent
 
-o  Most commands behave alike on the HTTP port 80 of osiris.ubishops.ca
-   however, since we don't know how to encode the GET/POST request in C,
-   sending the raw request string only receives a "301 redirect" status code,
-   and the server side will close the connection each time, so we are not able
-   to test keepalive mode on this server.
+o  if client just pressed Enter, a new line with prompt will be returned
+>
 
-o  All commands behave in the same manner on SMTP port 25 of linux.ubishops.ca
+o  if client issued a "quit" command, our server will close that thread
+> quit
+Connection closed by foreign host.
+
+o  if the shell command is invalid, error
+> sadad
+ERR 65280 Command executed with errors
+> CPRINT
+execve: No such file or directory
+OK 0 Last executed shell output sent
+
+o  if client is inactive for 5 minutes, server will close its thread
+>
+> your session has expired
+Connection closed by foreign host.
+
+o  if a file command has bad syntax, a hint will be returned
+> FREAD 1 2 3 4
+FAIL -1 Usage: FREAD identifier length
+
+o  if an undefined file command is issued, error
+> FFFFF
+FAIL -9 invalid request
+
+o  "FOPEN" opens a file
+> FOPEN test
+OK 9 file opened successfully
+
+o  if a file has been opened by other clients, "FOPEN" will return the fd
+> FOPEN test
+ERR 9 file already opened
+
+o  if the filename is not a valid file, "FOPEN" fails
+> FOPEN 123456
+FAIL 2 cannot open file
+
+o  if the identifier does not refer to a previously opened fd in this session, error
+> FSEEK 999 0
+ERR 2 invalid identifier, no such file or directory
+
+o  if arguments are not numbers or pointless (e.g. negative length), error
+> FSEEK 9 ABCD
+FAIL -5 invalid argument(s)
+> FREAD 9 -999
+FAIL -6 invalid length value
+
+o  "FSEEK" with offset equal to 0 will tell us the current position in the file
+> FSEEK 9 0
+OK 0 seek pointer is now 0 bytes from the beginning of the file
+
+o  "FSEEK" with offset > 0 will advance the position in the file
+> FSEEK 9 20
+OK 0 seek pointer is now 20 bytes from the beginning of the file
+
+o  the seek pointer is shared among clients from distinct threads
+> FSEEK 9 20
+OK 0 seek pointer is now 20 bytes from the beginning of the file
+
+o  "FSEEK" with offset < 0 will move the position backward
+> FSEEK 9 -20
+OK 0 seek pointer is now 0 bytes from the beginning of the file
+
+o  "FREAD" reads data from the file and advances the seek pointer
+> FREAD 9 5
+OK 5 11112
+
+o  "FWRITE" writes data to the file and advances the seek pointer
+> FWRITE 9 11111
+OK 0 wrote 5 bytes data to the file
+
+o  server log shows that multiple threads can read the same file at the same time
+client session 1 starts reading test...
+client session 2 starts reading test...
+client session 1 finished reading test ...
+client session 2 finished reading test ...
+
+o  server log shows that a writer thread must wait for all the other readers/writers
+client session 2 starts reading test...
+client session 2 finished reading test ...
+client session 1 starts writing test ...
+client session 1 finished writing test ...
+
+o  server log shows that a reader thread must wait for all the other writers
+client session 1 starts writing test ...
+client session 1 finished writing test ...
+client session 2 starts reading test...
+client session 2 finished reading test ...
+
+o  server log shows that there can only be at most 1 writer at a time
+client session 1 starts writing test ...
+client session 1 finished writing test ...
+client session 2 starts writing test...
+client session 2 finished writing test ...
+
+o  server log shows that operations on different files will not block each other
+client session 1 starts writing test ...
+client session 2 starts writing test2...
+client session 1 finished writing test ...
+client session 2 finished writing test2 ...
+
+o  if server is run in background, a log file "shfd.log" will be created/opened and locked:
+daemon started, process id is 977
+
+o  we can verify that it is indeed running in background
+> ps -ef | grep 977  
+neo-mas+   977  1356  0 08:47 ?        00:00:00 ./shfd
+
+o  if we try to run ./shfd twice, an error message will be written into the log file
+another copy of the server is already running, exiting pid 1184...
+
+o  even if we send signals to the daemon, it is still running background
+> kill -SIGINT 977
+> kill -SIGPIPE 977
+> ps -ef | grep 977
+neo-mas+   977  1356  0 08:47 ?        00:00:00 ./shfd
+
+o  however, a SIGKILL always kills the daemon
+> kill -SIGKILL 977
+> ps -ef | grep 977
+
+o  finally, this is a sample snippet of our server log "shfd.log"
+daemon started, process id is 977
+another copy of the server is already running, exiting pid 1184...
+new connection from 127.0.0.1 on socket 5
+new connection from 127.0.0.1 on socket 8
+client session 1 starts reading test...
+client session 2 starts reading test...
+client session 1 finished reading test ...
+client session 2 finished reading test ...
+new connection from 127.0.0.1 on socket 10
+client session 2 starts reading test...
+client session 2 finished reading test ...
+client session 3 starts writing test ...
+client session 3 finished writing test ...
+connection closed by client on socket 10
+new connection from 127.0.0.1 on socket 8
+closing client connection on socket 5
 
 
 Reference
@@ -133,12 +195,3 @@ Reference
 o  CS 464/564 Course website - https://cs.ubishops.ca/home/cs464
 o  Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
 o  Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
-
-
-Acknowledgement
-
-o  our code is adapted from solution to Assignment 1 by Dr. Stefan Bruda
-   https://cs.ubishops.ca/home/cs464/sshell.tar.gz
-o  some changes have been made to accommodate my own modules, and serveral new
-   functionalities have been introduced to comply with the requirements of
-   Assignment 2

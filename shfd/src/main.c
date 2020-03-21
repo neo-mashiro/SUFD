@@ -2,7 +2,7 @@
 ** shfd -- Assignment 3 (CS 464/564), Bishop's University
 **
 ** @author:    Wentao Lu (002276355), Yi Ren (002212345)
-** @date:      2020/03/09
+** @date:      2020/03/21
 ** @reference: CS 464/564 Course website - https://cs.ubishops.ca/home/cs464
 **             Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
 **             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
@@ -18,9 +18,10 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <sys/file.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <netdb.h>
 #include <poll.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -35,6 +36,7 @@
 #define N 1000
 #define MEGEXTRA 1000000
 
+int lockfile;  // server's log file (to be locked)
 int DEBUG_MODE = 0;
 int DELAY_MODE = 0;
 int VERBOSE_MODE = 0;
@@ -42,8 +44,6 @@ char* s_port = "9001";  // default shell service port number, use echo $((8000 +
 char* f_port = "9002";  // default file service port number, use echo $((8001 + `id -u`)) = 10145 on linux.bishops.ca
 const char* prompt = "> ";
 const char* path[] = {"/bin", "/usr/bin", 0};
-
-// then update as per Bruda's slide
 
 struct monitor_t {          // struct for monitor data
     pthread_mutex_t m_mtx;  // monitor mutex
@@ -79,92 +79,81 @@ sem_t f_sem;  // semaphore for limiting the number of file threads
 pthread_attr_t attr;  // universal thread attribute
 pthread_mutex_t mutex;  // mutex for safely updating global counts (n_echo and n_lock)
 
-int init_server() {
-    // // redirect I/O file descriptors
-    // for (int i = getdtablesize() - 1; i >= 0; i--) {
-    //     (void) close(i);
-    // }
-    // fd = open("/dev/null", O_RDWR);  // stdin
-    // (void) dup(fd);  // stdout
-    // (void) dup(fd);  // stderr
-    //
-    // // detach from tty
-    // fd = open("/dev/tty", O_RDWR);
-    // (void) ioctl(fd, TIOCNOTTY, 0);
-    // (void) close(fd);
-    //
-    // // move server to a safe directory
-    // (void) chdir("/");
-    //
-    // // set umask
-    // (void) umask(027);
-    //
-    // // place server into a single process group
-    // (void) setpgrp(0, getpid());
-    //
-    // // create server's lock file to enforce only 1 copy
-    // int lf = open("/lf.lock", O_RDWR | O_CREAT, 0640);
-    // if (lf > 0) {
-    //     perror("server: open lock file");
-    //     exit(1);
-    // }
-    // if (flock(lf, LOCK_EX | LOCK_NB)) {
-    //     perror("server: lock file");
+int daemonize(void) {
+    // close stdin 0, stdout 1, stderr 2 and everything
+    for (int i = getdtablesize() - 1; i >= 0 ; i--) {
+        close(i);
+    }
+
+    // redirect 0 to "/dev/null", 1 and 2 to server's log file
+    int lf = open("/dev/null", O_RDWR);  // after we closed 0,1,2, now "/dev/null" will be opened on 0 (stdin)
+    lf = open("./shfd.log", O_WRONLY|O_CREAT|O_APPEND, 0640);  // open server's log file on 1 (stdout)
+    if (lf == -1 || lf > 1) {
+        perror("open server log file");
+        exit(-1);
+    }
+    dup(lf);  // redirect stderr to the same server log file
+
+    // lock server's log file to enforce only 1 running copy of the server
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0;  // lock to EOF
+
+    if (fcntl(lf, F_SETLK, &fl) == -1) {  // POSIX record locks suffice to ensure mutual exclusion among distinct processes
+        printf("another copy of the server is already running, exiting pid %d...\n", getpid());
+        exit(-1);
+    }
+    // if (flock(fd, LOCK_EX|LOCK_NB)) {  // BSD locks also work
+    //     printf("another copy of the server is already running, exiting...");
     //     exit(0);
     // }
-    //
-    // // save server's process id in lock file
-    // char pbuf[10];
-    // (void) sprintf(pbuf, "%6d0", getpid());
-    // (void) write(lf, pbuf, strlen(pbuf));
 
-    // handle signals
-    // struct sigaction sa;
-    // sa.sa_handler = SIG_IGN;
-    // sigemptyset(&sa.sa_mask);
-    // sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;  // SA_RESTART restarts the syscall on receiving EINTR
-    //
-    // registerZombieReaper(&sa, enable);   // enable the reaper before zombies spawn (before any unwaited fork())
-    // registerZombieReaper(&sa, disable);  // disable the reaper before any waited fork(), and then restore after wait()
-    // volatile sig_atomic_t var;  // can be mutated inside a handler
-    // <stdio.h> functions are not async-safe, so cannot be used in handlers
-    // void handleSignals(int signal) {
-    // 	(void)signal;  // suppress the warning of unused variable
-    // 	....           // your own code here must be atomic operations, i.e., not splittable in parts
-    // }
-    // struct sigaction sa;
-    // sigfillset(&sa.sa_mask);  // block all other signals
-    // sigemptyset(&sa.sa_mask);  // sa.sa_mask is empty set, no signals will be blocked
-    // sa.sa_handler = f;         // register user-defined handler
-    // sa.sa_flags = SA_RESTART;  // SA_RESTART restarts the system calls on receiving EINTR
-    // if (sigaction(SIGINT, &sa, NULL) == -1) {  // handle SIGINT
-    //     perror("sigaction");
-    //     exit(1);
-    // }
-    // if (sigaction(SIGPIPE, &sa, NULL) == -1) {  // handle SIGPIPE
-    //     perror("sigaction");
-    //     exit(1);
-    // }
-    // if (sigaction(SIGUSR1, &sa, NULL) == -1) {  // handle SIGUSR1
-    //     perror("sigaction");
-    //     exit(1);
-    // }
-    // void handleSignal(int signal) {
-    // 	(void)signal;
-    //     switch (signal) {
-    //         case SIGINT:
-    //             ....
-    //             break;
-    //         case SIGPIPE:
-    //             ....
-    //             break;
-    //         default:
-    //             ....
-    //     }
-    //     ....
-    // }
+    // save server's process id in the log file
+    char pbuf[50];
+    sprintf(pbuf, "daemon started, process id is %d\n", getpid());
+    write(lf, pbuf, strlen(pbuf));
 
+    // detach the server from tty, so that it will not receive signals from its parent (the init process)
+    int fd = open("/dev/tty", O_RDWR);
+    ioctl(fd, TIOCNOTTY, 0);
+    close(fd);
 
+    // move server to a safe directory
+    chdir("./run");
+
+    // place server into a single process group
+    if (setpgid(getpid(),0) != 0) {
+        perror("setpgid");
+        fflush(stderr);
+        exit(-1);
+    }
+
+    // set umask
+    umask(027);
+
+    // ignore all signals
+    struct sigaction sa;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = SIG_IGN;
+
+    for (int s = 1; s < 65 ; s++) {
+        if((s != SIGKILL) && (s != SIGSTOP) && (s != 32) && (s != 33)) {
+            if (sigaction(s, &sa, NULL) == -1) {
+                perror("sigaction");
+                fflush(stderr);
+                exit(1);
+            }
+        }
+    }
+
+    return lf;
+}
+
+int init_server() {
     // initialize semaphore, mutex, condition variable, thread attribute
     sem_init(&s_sem, 0, N_THREADS);
     sem_init(&f_sem, 0, N_THREADS);
@@ -181,9 +170,9 @@ int init_server() {
     // param.sched_priority = 1;
     // if (sched_setscheduler(0, SCHED_RR, &param) != 0) {
     //     perror("sched_setscheduler");
+    //     fflush(stderr);
     //     exit(1);
     // }
-
     return 0;
 }
 
@@ -201,7 +190,25 @@ int exit_server() {
         pthread_mutex_destroy(&locks[i].f_mtx);
         pthread_cond_destroy(&locks[i].f_cond);
     }
-    pthread_exit(NULL);  // exit the main thread
+
+    // unlock server's log file
+    struct flock fl;
+    memset(&fl, 0, sizeof(fl));
+    fl.l_type = F_UNLCK;
+    fl.l_whence = SEEK_SET;
+    fl.l_start = 0;
+    fl.l_len = 0;
+
+    if (fcntl(lockfile, F_SETLK, &fl) == -1) {
+        perror("unlock log file");
+        fflush(stderr);
+        exit(1);
+    }
+
+    // release the log file and exit the main thread
+    close(lockfile);
+    unlink("/shfd.log");
+    pthread_exit(NULL);
 }
 
 int opener(int argc, char** argv, int echo_id) {
@@ -370,6 +377,7 @@ int reader(int argc, char** argv, int echo_id, int lock_id) {
     // reading...
     if (DELAY_MODE) {
         printf("client session %d starts reading %s...\n", echo_id, lock->f_name);
+        fflush(stdout);
         sleep(3);
     }
     char buf[4096];
@@ -386,6 +394,7 @@ int reader(int argc, char** argv, int echo_id, int lock_id) {
     }
     if (DELAY_MODE) {
         printf("client session %d finished reading %s ...\n", echo_id, lock->f_name);
+        fflush(stdout);
     }
 
     // reading finished
@@ -440,6 +449,7 @@ int writer(int argc, char** argv, int echo_id, int lock_id) {
     // writing...
     if (DELAY_MODE) {
         printf("client session %d starts writing %s ...\n", echo_id, lock->f_name);
+        fflush(stdout);
         sleep(6);
     }
     int len = strlen(buf);
@@ -459,6 +469,7 @@ int writer(int argc, char** argv, int echo_id, int lock_id) {
     }
     if (DELAY_MODE) {
         printf("client session %d finished writing %s ...\n", echo_id, lock->f_name);
+        fflush(stdout);
     }
 
     // writing finished
@@ -597,6 +608,7 @@ void* s_worker(void* csock) {
     int pipefd[2];      // create a pipe for IPC
     if (pipe(pipefd) == -1) {
         perror("pipe");
+        fflush(stderr);
         strike(sock, &s_sem);
     }
 
@@ -605,14 +617,17 @@ void* s_worker(void* csock) {
         if (send(sock, prompt, strlen(prompt), 0) < 0) {
             if (errno == EPIPE) {
                 printf("connection closed by client on socket %d\n", sock);
+                fflush(stdout);
             }
             perror("send");
+            fflush(stderr);
             strike(sock, &s_sem);
         }
 
         if ((n_res = poll(cfds, 1, 300000)) != 0) {  // time out after 5 minutes of inactivity
             if (n_res < 0) {
                 perror("poll");
+                fflush(stderr);
                 strike(sock, &s_sem);  // worker go on strike
             }
 
@@ -625,10 +640,12 @@ void* s_worker(void* csock) {
                 n_bytes = recv(sock, req, sizeof(req) - 1, 0);
                 if (n_bytes == 0) {
                     printf("connection closed by client on socket %d\n", sock);
+                    fflush(stdout);
                     strike(sock, &s_sem);
                 }
                 else if (n_bytes < 0) {
                     perror("recv");
+                    fflush(stderr);
                     strike(sock, &s_sem);
                 }
             }
@@ -674,6 +691,7 @@ void* s_worker(void* csock) {
                 else {
                     if (send(sock, output, strlen(output), 0) < 0) {
                         perror("send");
+                        fflush(stderr);
                         echos[echo_id].status = "FAIL";
                         echos[echo_id].code = -7;
                         echos[echo_id].message = "Failed to send output";
@@ -714,6 +732,7 @@ void* s_worker(void* csock) {
                         if (n_bytes == -1) {
                             if (errno == EINTR) { continue; }
                             perror("readtimeout");
+                            fflush(stderr);
                             strike(sock, &s_sem);
                         }
                         else if (n_bytes == 0 || n_bytes == -2) {  // EOF, no data in the pipe
@@ -757,6 +776,7 @@ void* s_worker(void* csock) {
             if (sendall(sock, res, &len) == -1) {
                 perror("sendall3");  // SIGPIPE already handled in main()
                 printf("only %d bytes of data have been sent!\n", len);
+                fflush(stdout); fflush(stderr);
                 strike(sock, &s_sem);
             }
         }
@@ -767,6 +787,7 @@ void* s_worker(void* csock) {
             if (sendall(sock, farewell, &len) == -1) {  // say good-bye to client
                 perror("sendall4");
                 printf("only %d bytes of data have been sent!\n", len);
+                fflush(stdout); fflush(stderr);
                 strike(sock, &s_sem);
             }
 
@@ -809,14 +830,17 @@ void* f_worker(void* csock) {
         if (send(sock, prompt, strlen(prompt), 0) < 0) {
             if (errno == EPIPE) {
                 printf("connection closed by client on socket %d\n", sock);
+                fflush(stdout);
             }
             perror("send");
+            fflush(stderr);
             strike(sock, &f_sem);
         }
 
         if ((n_res = poll(cfds, 1, 300000)) != 0) {  // time out after 5 minutes of inactivity
             if (n_res < 0) {
                 perror("poll");
+                fflush(stderr);
                 strike(sock, &f_sem);  // worker go on strike
             }
 
@@ -829,10 +853,12 @@ void* f_worker(void* csock) {
                 n_bytes = recv(sock, req, sizeof(req) - 1, 0);
                 if (n_bytes == 0) {
                     printf("connection closed by client on socket %d\n", sock);
+                    fflush(stdout);
                     strike(sock, &f_sem);
                 }
                 else if (n_bytes < 0) {
                     perror("recv");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
@@ -863,30 +889,35 @@ void* f_worker(void* csock) {
                 lock_id = opener(argc, argv, echo_id);  // open the file and assign a lock_id
                 if (lock_id < 0) {
                     perror("opener");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
             else if (strcmp(argv[0], "FSEEK") == 0) {
                 if ((seeker(argc, argv, echo_id, lock_id)) != 0) {
                     perror("seeker");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
             else if (strcmp(argv[0], "FREAD") == 0) {
                 if ((reader(argc, argv, echo_id, lock_id)) != 0) {
                     perror("reader");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
             else if (strcmp(argv[0], "FWRITE") == 0) {
                 if ((writer(argc, argv, echo_id, lock_id)) != 0) {
                     perror("writer");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
             else if (strcmp(argv[0], "FCLOSE") == 0) {
                 if ((closer(argc, argv, echo_id, lock_id)) != 0) {
                     perror("closer");
+                    fflush(stderr);
                     strike(sock, &f_sem);
                 }
             }
@@ -913,6 +944,7 @@ void* f_worker(void* csock) {
             if (sendall(sock, res, &len) == -1) {
                 perror("sendall");  // SIGPIPE already handled in main()
                 printf("only %d bytes of data have been sent!\n", len);
+                fflush(stdout); fflush(stderr);
                 strike(sock, &f_sem);
             }
         }
@@ -922,6 +954,7 @@ void* f_worker(void* csock) {
             if (sendall(sock, farewell, &len) == -1) {  // say good-bye to client
                 perror("sendall2");
                 printf("only %d bytes of data have been sent!\n", len);
+                fflush(stdout); fflush(stderr);
                 strike(sock, &f_sem);
             }
 
@@ -973,10 +1006,16 @@ int main(int argc, char* argv[]) {
 
     // startup server
     if (!DEBUG_MODE) {
-        // start server in background
-        if (fork() == 0) {
+        // start daemon server in background
+        int pid = fork();
+        if (pid == 0) {
+            if ((lockfile = daemonize()) != 1) {
+                printf("failed to daemonize server\n");
+                exit(1);
+            }
             if (init_server() != 0) {
                 printf("failed to initialize server\n");
+                fflush(stdout);  // now the log file is opened, each write operation must be followed by a fflush()
                 exit(1);
             }
         }
@@ -985,7 +1024,7 @@ int main(int argc, char* argv[]) {
         }
     }
     else {
-        // start server in foreground
+        // start normal server in foreground
         if (init_server() != 0) {
             printf("failed to initialize server\n");
             exit(1);
@@ -1003,6 +1042,7 @@ int main(int argc, char* argv[]) {
     fsock = setListener(NULL, f_port, 128);
     if (ssock == -1 || fsock == -1) {
         printf("unable to establish a listener socket\n");
+        fflush(stdout);
         exit(2);
     }
 
@@ -1017,6 +1057,7 @@ int main(int argc, char* argv[]) {
     // pthread_t mid;
     // if (pthread_create(&mid, &attr, monitor, NULL) != 0) {
     //     perror("pthread_create");
+    //     fflush(stderr);
     //     exit(3);
     // }
 
@@ -1032,6 +1073,7 @@ int main(int argc, char* argv[]) {
         int n_res = poll(pfds, 2, -1);  // timeout = -1, infinite poll
         if (n_res == -1) {
             perror("poll");
+            fflush(stderr);
             exit(4);
         }
 
@@ -1041,17 +1083,20 @@ int main(int argc, char* argv[]) {
                 csock = accept(pfds[i].fd, (struct sockaddr*)&cli_addr, &sin_size);
                 if (csock == -1) {
                     perror("accept");
+                    fflush(stderr);
                     exit(5);
                 }
 
                 // new client connected
                 inet_ntop(cli_addr.ss_family, getInAddr((struct sockaddr*)&cli_addr), ipstr, INET6_ADDRSTRLEN);
                 printf("new connection from %s on socket %d\n", ipstr, csock);
+                fflush(stdout);
 
                 if (pfds[i].fd == ssock) {
                     // invoke a new shell worker thread
                     if (pthread_create(&sid[s], &attr, s_worker, (void*)(intptr_t)csock) != 0) {
                         perror("pthread_create");
+                        fflush(stderr);
                         exit(6);
                     }
                     s++;
@@ -1060,6 +1105,7 @@ int main(int argc, char* argv[]) {
                     // invoke a new file worker thread
                     if (pthread_create(&fid[f], &attr, f_worker, (void*)(intptr_t)csock) != 0) {
                         perror("pthread_create");
+                        fflush(stderr);
                         exit(7);
                     }
                     f++;
