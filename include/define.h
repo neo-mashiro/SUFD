@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -36,11 +37,14 @@ extern int VERBOSE_MODE;
 extern int ssock;  // shell master socket
 extern int fsock;  // file master socket
 extern int fsock_tmp;  // store fsock's old value when fsock is temporarily down for reconfiguration
+extern int psock;  // peer master socket
+extern int csocks[64];  // slave sockets (client perspective), used to send sync requests to peers
+extern int ssocks[64];  // slave sockets (server perspective), used to recv sync requests from peers
 
 extern char* s_port;  // shell port number
 extern char* f_port;  // file port number
-
 extern char* peers[64];  // an array of [host:port] pairs for the replication servers
+extern int num_peers;  // number of peer nodes (current node included)
 
 extern pthread_attr_t attr;
 extern pthread_mutex_t wake_mutex;
@@ -64,10 +68,6 @@ struct monitor_t {  // for dynamic threads management based on network traffic
     pthread_cond_t m_cond;
 } extern monitor;
 
-struct tracker_t {   // for real-time peer synchronization (replica consistency)
-    char* os[1024];  // operation queue: operations to be fetched and updated in order
-} extern tracker;
-
 struct echo_t {     // for server response
     char* status;   // OK / FAIL / ERR
     int code;       // server side error code
@@ -86,24 +86,23 @@ struct lock_t {               // for file access control
 extern struct lock_t locks[65535];  // each file is associated with a unique lock entry
 extern int n_lock;  // number of lock entries used
 
-void logger(const char* message);
+int opener(int argc, char** argv, struct echo_t* echo, int* lock_id, char** file_ptr);
+int seeker(int argc, char** argv, struct echo_t* echo, int lock_id);
+int reader(int argc, char** argv, struct echo_t* echo, int lock_id);
+int writer(int argc, char** argv, struct echo_t* echo, int lock_id);
+int closer(int argc, char** argv, struct echo_t* echo, int lock_id);
 
 int init_server(void);
-
 int stop_server(void);
-
 int reset_server(void);
-
+void logger(const char* message);
 void server_admin(int asock);
-
 void reset_lock(int lock_id);
-
 void* file_thread(void* fsock);
-
+void* sync_thread(void* id);
+void* server_thread(void* omitted);
+void* client_thread(void* omitted);
 void* signal_thread(void* set);
-
 void* monitor_thread(void* omitted);
-
-//void* tracker_thread(void* omitted);
 
 #endif

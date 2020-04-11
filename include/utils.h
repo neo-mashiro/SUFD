@@ -44,8 +44,13 @@ int readLine(int file, char* buf, size_t size);
 */
 size_t tokenize(char* str, char** tokens, size_t n);
 
+size_t str_split(char* str, char** tokens, size_t n);
+
 // check if a string consists of only digits, returns 0(false)/1(true)
 int checkDigit(const char* str);
+
+// find the majority index in a char* array, return index or -1 if no majority
+int findMajority(char* arr[], int n);
 
 // convert port in decimal number to a string
 char* convertPort(unsigned short port);

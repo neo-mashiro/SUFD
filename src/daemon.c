@@ -206,7 +206,7 @@ int daemonize(void) {
     close(fd);
 
     // move server to a safe directory
-    chdir("./run");
+    // chdir("./run");
 
     // place server into a single process group
     if (setpgid(getpid(),0) != 0) {

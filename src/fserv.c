@@ -4,28 +4,16 @@
 
 #include "define.h"
 
-void reset_lock(int lock_id) {
-    if (locks[lock_id].fd > 0) {
-        close(locks[lock_id].fd);
-    }
-    locks[lock_id].fd = -1;
-    // unlink(locks[lock_id].f_name);  // should not delete file
-    memset(&locks[lock_id].f_name, 0, sizeof(locks[lock_id].f_name));
-    locks[lock_id].n_reader = 0;
-    locks[lock_id].n_writer = 0;
-    pthread_mutex_destroy(&locks[lock_id].f_mtx);  // release resource
-    pthread_cond_destroy(&locks[lock_id].f_cond);  // release resource
-}
-
-int opener(int argc, char** argv, struct echo_t* echo) {
+int opener(int argc, char** argv, struct echo_t* echo, int* lock_id, char** file_ptr) {
     // validate request format
     if (argc != 2) {
         echo->status = "FAIL";
         echo->code = -1;
         echo->message = "Usage: FOPEN filename";
-        return 0;
+        return -1;
     }
-    char* filename = argv[1];
+    *file_ptr = strdup(argv[1]);
+    char* filename = *file_ptr;
 
     struct flock fl;
     memset(&fl, 0, sizeof(fl));
@@ -34,15 +22,15 @@ int opener(int argc, char** argv, struct echo_t* echo) {
     fl.l_start = 0;
     fl.l_len = 0;  // lock to EOF
 
-    int fd = open(filename, O_RDWR);  // if file already opened by another thread, we get a new fd for the same file
+    int fd = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);  // if file already opened by another thread, we get a new fd for the same file
     if (fd < 0) {
         echo->status = "FAIL";
         echo->code = errno;
         echo->message = "cannot open file";
-        return 0;
+        return -1;
     }
 
-    if (fcntl(fd, F_OFD_SETLK, &fl) == -1) {  // open file description locks for synchronization among threads
+    if (fcntl(fd, F_OFD_SETLK, &fl) == -1) {  // OFD (open file description) locks are mutual exclusive among threads
         close(fd);  // when file already opened, we just close this new fd and use the previously opened fd
         echo->status = "ERR";
         echo->message = "file already opened";
@@ -50,32 +38,34 @@ int opener(int argc, char** argv, struct echo_t* echo) {
         for (int i = 0; i < n_lock; i++) {
             if (strcmp(locks[i].f_name, filename) == 0) {
                 echo->code = locks[i].fd;  // identifier
-                return i;  // lock_id
+                *lock_id = i;
+                return -1;
             }
         }
     }
 
     // if we reach this, file is opened for the 1st time, assign it a new lock_id, and increment n_lock
-    int lock_id = n_lock;
+    int new_lock_id = n_lock;
+    *lock_id = new_lock_id;
     pthread_mutex_lock(&lock_mutex);
     n_lock++;
     pthread_mutex_unlock(&lock_mutex);
 
-    // activate locks[lock_id], prepare file for future manipulation
-    memset(&locks[lock_id].f_name, 0, sizeof(locks[lock_id].f_name));
-    strcpy(locks[lock_id].f_name, filename);
-    locks[lock_id].fd = fd;
-    locks[lock_id].n_reader = 0;
-    locks[lock_id].n_writer = 0;
-    pthread_mutex_init(&locks[lock_id].f_mtx, NULL);
-    pthread_cond_init(&locks[lock_id].f_cond, NULL);
+    // activate locks[new_lock_id], prepare file for future manipulation
+    memset(&locks[new_lock_id].f_name, 0, sizeof(locks[new_lock_id].f_name));
+    strcpy(locks[new_lock_id].f_name, filename);
+    locks[new_lock_id].fd = fd;
+    locks[new_lock_id].n_reader = 0;
+    locks[new_lock_id].n_writer = 0;
+    pthread_mutex_init(&locks[new_lock_id].f_mtx, NULL);
+    pthread_cond_init(&locks[new_lock_id].f_cond, NULL);
 
     // success response
     echo->status = "OK";
     echo->code = fd;
     echo->message = "file opened successfully";
 
-    return lock_id;
+    return 0;
 }
 
 int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
@@ -84,13 +74,13 @@ int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = -1;
         echo->message = "Usage: FSEEK identifier offset";
-        return 0;
+        return -1;
     }
     if (checkDigit(argv[1]) == 0 || checkDigit(argv[2]) == 0) {
         echo->status = "FAIL";
         echo->code = -5;
         echo->message = "invalid argument(s)";
-        return 0;
+        return -1;
     }
 
     int identifier = atoi(argv[1]);
@@ -101,7 +91,7 @@ int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "ERR";
         echo->code = ENOENT;
         echo->message = "invalid identifier, no such file or directory";
-        return 0;
+        return -1;
     }
 
     // waiting for resources
@@ -118,7 +108,7 @@ int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = errno;
         echo->message = "system call lseek() returns -1";
-        return 0;
+        return -1;
     }
 
     // writing finished
@@ -133,7 +123,7 @@ int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
     char temp[100];
     memset(temp, 0, sizeof(temp));
     sprintf(temp, "seek pointer is now %d bytes from the beginning of the file", pos);
-    echo->message = temp;
+    echo->message = strdup(temp);
 
     return 0;
 }
@@ -144,13 +134,13 @@ int reader(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = -1;
         echo->message = "Usage: FREAD identifier length";
-        return 0;
+        return -1;
     }
     if (checkDigit(argv[1]) == 0 || checkDigit(argv[2]) == 0) {
         echo->status = "FAIL";
         echo->code = -5;
         echo->message = "invalid argument(s)";
-        return 0;
+        return -1;
     }
 
     int identifier = atoi(argv[1]);
@@ -161,14 +151,14 @@ int reader(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = -6;
         echo->message = "invalid length value";
-        return 0;
+        return -1;
     }
 
     if (identifier != lock->fd || lock->fd <= 0) {
         echo->status = "ERR";
         echo->code = ENOENT;
         echo->message = "invalid identifier, no such file or directory";
-        return 0;
+        return -1;
     }
 
     // waiting for resources
@@ -194,7 +184,7 @@ int reader(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = errno;
         echo->message = "system call read() returns -1";
-        return 0;
+        return -1;
     }
     if (buf[strlen(buf) - 1] == '\n') {
         buf[strlen(buf) - 1] = '\0';
@@ -226,13 +216,13 @@ int writer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = -1;
         echo->message = "Usage: FWRITE identifier bytes";
-        return 0;
+        return -1;
     }
     if (checkDigit(argv[1]) == 0) {
         echo->status = "FAIL";
         echo->code = -5;
         echo->message = "invalid argument(s)";
-        return 0;
+        return -1;
     }
 
     int identifier = atoi(argv[1]);
@@ -244,7 +234,7 @@ int writer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "ERR";
         echo->code = ENOENT;
         echo->message = "invalid identifier, no such file or directory";
-        return 0;
+        return -1;
     }
 
     // waiting for resources
@@ -273,7 +263,7 @@ int writer(int argc, char** argv, struct echo_t* echo, int lock_id) {
             echo->status = "FAIL";
             echo->code = errno;
             echo->message = "system call write() returns -1";
-            return 0;
+            return -1;
         }
         total += n;
         left -= n;
@@ -305,13 +295,13 @@ int closer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = -1;
         echo->message = "Usage: FCLOSE identifier";
-        return 0;
+        return -1;
     }
     if (checkDigit(argv[1]) == 0) {
         echo->status = "FAIL";
         echo->code = -5;
         echo->message = "invalid argument(s)";
-        return 0;
+        return -1;
     }
 
     int identifier = atoi(argv[1]);
@@ -321,7 +311,7 @@ int closer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "ERR";
         echo->code = ENOENT;
         echo->message = "invalid identifier, no such file or directory";
-        return 0;
+        return -1;
     }
 
     // wait until no readers or writers
@@ -344,7 +334,7 @@ int closer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = errno;
         echo->message = "cannot close (unlock) file";
-        return 0;
+        return -1;
     }
 
     // when we close this fd, all the locks on this physical file in the same process are released
@@ -353,7 +343,7 @@ int closer(int argc, char** argv, struct echo_t* echo, int lock_id) {
         echo->status = "FAIL";
         echo->code = errno;
         echo->message = "cannot close file";
-        return 0;
+        return -1;
     }
 
     // upon close() success, reset the locks[lock_id] entry to avoid corrupt behavior in other threads
@@ -366,6 +356,32 @@ int closer(int argc, char** argv, struct echo_t* echo, int lock_id) {
     echo->message = "file closed";
 
     return 0;
+}
+
+void reset_lock(int lock_id) {
+    if (locks[lock_id].fd > 0) {
+        close(locks[lock_id].fd);
+    }
+    locks[lock_id].fd = -1;
+    // unlink(locks[lock_id].f_name);  // should not delete file
+    memset(&locks[lock_id].f_name, 0, sizeof(locks[lock_id].f_name));
+    locks[lock_id].n_reader = 0;
+    locks[lock_id].n_writer = 0;
+    pthread_mutex_destroy(&locks[lock_id].f_mtx);  // release resource
+    pthread_cond_destroy(&locks[lock_id].f_cond);  // release resource
+}
+
+void broadcast_sync(const char* req) {
+    // notify other peers to sync (one-phase commit)
+    for (int i = 0; i < num_peers - 1; i++) {
+        if (send(csocks[i], req, strlen(req), 0) < 0) {
+            char info[128];
+            memset(info, 0, sizeof(info));
+            sprintf(info, "failed to send sync request, peer node %s unavailable", peers[i + 1]);
+            logger(info);
+            continue;
+        }
+    }
 }
 
 void clean_client(int csock) {
@@ -390,6 +406,9 @@ void serve_client(int csock) {
     send(csock, welcome, strlen(welcome), 0);
 
     // repeatedly receive a request from client and handle it
+    struct echo_t echo;
+    int lock_id = 0;  // specify an entry in struct lock_t locks[]
+    char* filename = NULL;
     while (1) {
         if (send(csock, prompt, strlen(prompt), 0) < 0) {
             if (errno == EPIPE) {
@@ -404,7 +423,7 @@ void serve_client(int csock) {
             break;
         }
 
-        if ((n_res = poll(cfds, 1, 120000)) != 0) {  // time out after 2 minutes of inactivity
+        if ((n_res = poll(cfds, 1, 60000)) != 0) {  // time out after 1 minute of inactivity
             if (n_res < 0) {
                 perror("poll");
                 fflush(stderr);
@@ -432,6 +451,11 @@ void serve_client(int csock) {
                 }
             }
 
+            // save the raw request before it's mutated
+            char xreq[strlen(req) + 128];
+            memset(xreq, 0, sizeof(xreq));
+            strncpy(xreq, req, strlen(req));
+
             // replace the newline
             int slen = strlen(req);
             if (slen > 0 && req[slen - 1] == '\n') {
@@ -451,43 +475,73 @@ void serve_client(int csock) {
             }
 
             // execute command from client
-            struct echo_t echo;
-            int lock_id = 0;  // specify an entry in struct lock_t locks[]
-
+            char request[256];
+            memset(request, 0, sizeof(request));
             if (strcasecmp(argv[0], "FOPEN") == 0) {
-                lock_id = opener(argc, argv, &echo);  // open the file and assign a lock_id
-                if (lock_id < 0) {
-                    perror("opener");
-                    fflush(stderr);
-                    break;
+                if ((opener(argc, argv, &echo, &lock_id, &filename)) == 0) {  // open the file and assign a lock_id
+                    broadcast_sync(xreq);
                 }
             }
             else if (strcasecmp(argv[0], "FSEEK") == 0) {
-                if ((seeker(argc, argv, &echo, lock_id)) != 0) {
-                    perror("seeker");
-                    fflush(stderr);
-                    break;
+                if ((seeker(argc, argv, &echo, lock_id)) == 0) {
+                    sprintf(request, "%s %s %s", argv[0], filename, argv[2]);
+                    broadcast_sync(request);
                 }
             }
             else if (strcasecmp(argv[0], "FREAD") == 0) {
-                if ((reader(argc, argv, &echo, lock_id)) != 0) {
-                    perror("reader");
-                    fflush(stderr);
-                    break;
+                if ((reader(argc, argv, &echo, lock_id)) == 0) {
+                    // fflush socket rsock in case there are pending garbage data
+                    char garbage[256];
+                    for (int i = 0; i < num_peers - 1; i++) {
+                        recvTimeOut(csocks[i], garbage, sizeof(garbage), 50);  // 50 ms
+                    }
+                    // broadcast fread requests
+                    sprintf(request, "%s %s %s", argv[0], filename, argv[2]);
+                    broadcast_sync(request);
+                    // await all peer responses to vote
+                    char response[num_peers][256];
+                    sprintf(response[0], "%s", echo.message);
+                    for (int i = 0; i < num_peers - 1; i++) {
+                        memset(response[i + 1], 0, sizeof(response[i + 1]));
+                        int x_bytes = recvTimeOut(csocks[i], response[i + 1], sizeof(response[i + 1]), 500);  // 500 ms
+                        if (x_bytes <= 0) {
+                            memset(response[i + 1], 0, sizeof(response[i + 1]));
+                            sprintf(response[i + 1], "SYNC FAIL");
+                        }
+                    }
+                    // ...................
+                    int maxCount = 0;
+                    int vote = -1;
+                    for (int i = 0; i < num_peers; i++) {
+                        int count = 0;
+                        for (int j = 0; j < num_peers; j++) {
+                            if (strcmp(response[i], response[j]) == 0) count++;
+                        }
+
+                        if(count > maxCount) {
+                            maxCount = count;
+                            vote = i;
+                        }
+                    }
+
+                    echo.message = strdup(response[vote]);
+                    echo.code = strlen(echo.message);
+                    if (strcmp(echo.message, "SYNC FAIL") == 0) {
+                        echo.status = "FAIL";
+                        echo.code = 99;
+                    }
                 }
             }
             else if (strcasecmp(argv[0], "FWRITE") == 0) {
-                if ((writer(argc, argv, &echo, lock_id)) != 0) {
-                    perror("writer");
-                    fflush(stderr);
-                    break;
+                if ((writer(argc, argv, &echo, lock_id)) == 0) {
+                    sprintf(request, "%s %s %s", argv[0], filename, argv[2]);
+                    broadcast_sync(request);
                 }
             }
             else if (strcasecmp(argv[0], "FCLOSE") == 0) {
-                if ((closer(argc, argv, &echo, lock_id)) != 0) {
-                    perror("closer");
-                    fflush(stderr);
-                    break;
+                if ((closer(argc, argv, &echo, lock_id)) == 0) {
+                    sprintf(request, "%s %s", argv[0], filename);
+                    broadcast_sync(request);
                 }
             }
             else if (strcasecmp(argv[0], "QUIT") == 0) {
@@ -584,7 +638,7 @@ void* file_thread(void* id) {
         clean_client(csock);
 
         // thread quits itself if there's too little network traffic
-        int lower_bound = monitor.t_tot - monitor.t_inc - 1;
+        int lower_bound = monitor.t_tot - monitor.t_inc;
         if (monitor.t_act < lower_bound) {
             pthread_mutex_lock(&monitor.m_mtx);
             monitor.t_tot--;

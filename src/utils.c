@@ -51,6 +51,27 @@ size_t tokenize(char* str, char** tokens, size_t n) {
     return tok_size;
 }
 
+size_t str_split(char* str, char** tokens, size_t n) {
+    size_t tok_size = 1;
+    tokens[0] = str;
+
+    size_t i = 0;
+    while (i < n) {
+        if (str[i] == ':') {
+            str[i] = '\0';
+            i++;
+            for (; i < n && str[i] == ' '; i++) {}
+            if (i < n) {
+                tokens[tok_size] = str + i;
+                tok_size++;
+            }
+        } else {
+            i++;
+        }
+    }
+    return tok_size;
+}
+
 int checkDigit(const char* str) {
     char buf[strlen(str) + 1];
     strcpy(buf, str);
@@ -67,6 +88,23 @@ int checkDigit(const char* str) {
         }
     }
     return 1;
+}
+
+int findMajority(char* arr[], int n) {
+    int maxCount = 0;
+    int index = -1;
+    for (int i = 0; i < n; i++) {
+        int count = 0;
+        for (int j = 0; j < n; j++) {
+            if (strcmp(arr[i], arr[j]) == 0) count++;
+        }
+
+        if(count > maxCount) {
+            maxCount = count;
+            index = i;
+        }
+    }
+    return index;
 }
 
 char* convertPort(unsigned short port) {
@@ -93,18 +131,18 @@ int socketConnect(const char* host, const char* port) {
     hints.ai_socktype = SOCK_STREAM;
 
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        // fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
         return -1;
     }
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
-            perror("client: socket");
+            // perror("client: socket");
             continue;
         }
 
         if (connect(sock, p->ai_addr, p->ai_addrlen) < 0) {
-            perror("client: connect");
+            // perror("client: connect");
             close(sock);
             continue;
         }
@@ -113,12 +151,12 @@ int socketConnect(const char* host, const char* port) {
     }
 
     if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
+        // fprintf(stderr, "client: failed to connect\n");
         return -3;
     }
 
     inet_ntop(p->ai_family, extractAddr(p->ai_addr), ipstr, sizeof(ipstr));
-    printf("client: connected to %s\n", ipstr);
+    // printf("connected to peer node %s (port %s)\n", ipstr, port);
 
     freeaddrinfo(servinfo);
     return sock;

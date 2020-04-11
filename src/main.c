@@ -1,8 +1,9 @@
 /*
 ** shfd -- Assignment 4 (CS 464/564), Bishop's University
 **
-** @author:    Wentao Lu (002276355), Yi Ren (002269013)
-** @date:      2020/04/02
+** @author:    Wentao Lu (002276355) WLU19@UBishops.ca
+**             Yi Ren (002269013) YREN19@UBishops.ca
+** @date:      2020/04/12
 ** @reference: CS 464/564 Course website - https://cs.ubishops.ca/home/cs464
 **             Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
 **             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
@@ -19,23 +20,26 @@ int VERBOSE_MODE = 0;
 int ssock = 0;  // shell master socket
 int fsock = 0;  // file master socket
 int fsock_tmp = 0;
-char* s_port = "9001";  // default shell port number
-char* f_port = "9002";  // default file port number
+int psock = 0;
+int csocks[64] = { 0 };
+int ssocks[64] = { 0 };
+char* s_port = "8000";  // default shell port number
+char* f_port = "9000";  // default file port number
 char* peers[64] = { NULL };
+int num_peers = 0;
 pthread_attr_t attr;
 pthread_mutex_t wake_mutex;
 pthread_mutex_t lock_mutex;
 pthread_mutex_t logger_mutex;
 int thread_pool_size = 0;
 struct thread_t* thread_pool;
-struct monitor_t monitor = { .t_inc=128, .t_act=0, .t_tot=0, .t_max=256 };
-struct tracker_t tracker;
+struct monitor_t monitor = { .t_inc=8, .t_act=0, .t_tot=0, .t_max=24 };
 struct lock_t locks[65535];
 int n_lock = 0;
 
 int main(int argc, char* argv[]) {
     // parse command line switches and arguments
-    int copt = 0, err_switch = 0, count = 0, index;
+    int copt = 0, err_switch = 0, index;
     while ((copt = getopt(argc, argv, "dvDf:s:t:T:p:")) != -1) {
         char c = (char)copt;
         switch (c) {
@@ -73,7 +77,7 @@ int main(int argc, char* argv[]) {
                         optind = index - 1;
                         break;
                     }
-                    peers[count++] = peer;
+                    peers[num_peers++] = peer;
                 }
                 break;
             case '?':
@@ -100,7 +104,8 @@ int main(int argc, char* argv[]) {
     // establish master sockets
     ssock = setListener("localhost", s_port, 1);  // loopback socket, allow only 1 connection from localhost
     fsock = setListener(NULL, f_port, 128);  // passive socket, wait for client connections
-    if (ssock == -1 || fsock == -1) {
+    psock = setListener(NULL, peers[0], 128);  // passive socket, wait for peer nodes sync requests
+    if (ssock == -1 || fsock == -1 || psock == -1) {
         logger("unable to establish a listener socket");
         exit(2);
     }
@@ -135,13 +140,21 @@ int main(int argc, char* argv[]) {
         exit(3);
     }
 
-    // launch the session manager for replication consistency synchronization
-    // pthread_t tid;
-    // if (pthread_create(&tid, &attr, tracker_thread, NULL) != 0) {
-    //     perror("pthread_create");
-    //     fflush(stderr);
-    //     exit(3);
-    // }
+    // launch the server thread, await connection from peers
+    pthread_t srvid;
+    if (pthread_create(&srvid, &attr, server_thread, NULL) != 0) {
+        perror("pthread_create");
+        fflush(stderr);
+        exit(9);
+    }
+
+    // launch the client thread, connect to other peers
+    pthread_t cliid;
+    if (pthread_create(&cliid, &attr, client_thread, NULL) != 0) {
+        perror("pthread_create");
+        fflush(stderr);
+        exit(11);
+    }
 
     // the main thread continues to become the shell server, accept command from a local administrator
     struct sockaddr_storage cli_addr;
