@@ -1,0 +1,83 @@
+daemon started, process id is 27698
+2020-04-25 11:05:38  new connection from 127.0.0.1 on socket 6
+2020-04-25 11:06:17  admin is now online on socket 5
+2020-04-25 11:07:18  connection closed by client on socket 6
+2020-04-25 11:07:18  closing client connection on socket 6
+2020-04-25 11:07:29  new connection from 127.0.0.1 on socket 7
+2020-04-25 11:07:30  new connection from 127.0.0.1 on socket 6
+2020-04-25 11:07:30  new connection from 127.0.0.1 on socket 10
+2020-04-25 11:07:30  new connection from 127.0.0.1 on socket 11
+2020-04-25 11:07:31  new connection from 127.0.0.1 on socket 12
+2020-04-25 11:07:31  new connection from 127.0.0.1 on socket 13
+2020-04-25 11:07:31  new connection from 127.0.0.1 on socket 14
+2020-04-25 11:07:32  new connection from 127.0.0.1 on socket 15
+2020-04-25 11:07:32  new connection from 127.0.0.1 on socket 16
+2020-04-25 11:07:33  new connection from 127.0.0.1 on socket 17
+2020-04-25 11:07:33  new connection from 127.0.0.1 on socket 18
+2020-04-25 11:07:34  new connection from 127.0.0.1 on socket 19
+2020-04-25 11:07:34  new connection from 127.0.0.1 on socket 20
+2020-04-25 11:07:34  new connection from 127.0.0.1 on socket 21
+2020-04-25 11:07:35  new connection from 127.0.0.1 on socket 22
+2020-04-25 11:07:35  new connection from 127.0.0.1 on socket 23
+2020-04-25 11:07:35  new connection from 127.0.0.1 on socket 24
+2020-04-25 11:07:35  new connection from 127.0.0.1 on socket 25
+2020-04-25 11:07:35  new connection from 127.0.0.1 on socket 26
+2020-04-25 11:07:36  new connection from 127.0.0.1 on socket 27
+2020-04-25 11:07:36  new connection from 127.0.0.1 on socket 28
+2020-04-25 11:07:36  new connection from 127.0.0.1 on socket 29
+2020-04-25 11:07:37  new connection from 127.0.0.1 on socket 30
+2020-04-25 11:07:37  new connection from 127.0.0.1 on socket 31
+2020-04-25 11:08:30  closing client connection on socket 7
+2020-04-25 11:08:30  new connection from 127.0.0.1 on socket 7
+2020-04-25 11:08:30  closing client connection on socket 6
+2020-04-25 11:08:30  new connection from 127.0.0.1 on socket 6
+2020-04-25 11:08:30  closing client connection on socket 10
+2020-04-25 11:08:30  new connection from 127.0.0.1 on socket 10
+2020-04-25 11:08:30  closing client connection on socket 11
+2020-04-25 11:08:31  closing client connection on socket 12
+2020-04-25 11:08:31  closing client connection on socket 13
+2020-04-25 11:08:31  closing client connection on socket 14
+2020-04-25 11:08:32  closing client connection on socket 15
+2020-04-25 11:08:32  closing client connection on socket 16
+2020-04-25 11:08:33  closing client connection on socket 17
+2020-04-25 11:08:33  closing client connection on socket 18
+2020-04-25 11:08:34  closing client connection on socket 19
+2020-04-25 11:08:34  closing client connection on socket 20
+2020-04-25 11:08:34  closing client connection on socket 21
+2020-04-25 11:08:35  closing client connection on socket 22
+2020-04-25 11:08:35  closing client connection on socket 23
+2020-04-25 11:08:35  closing client connection on socket 24
+2020-04-25 11:08:35  closing client connection on socket 25
+2020-04-25 11:08:36  closing client connection on socket 26
+2020-04-25 11:08:36  closing client connection on socket 27
+2020-04-25 11:08:36  closing client connection on socket 28
+2020-04-25 11:08:36  closing client connection on socket 29
+2020-04-25 11:08:37  closing client connection on socket 30
+2020-04-25 11:08:37  closing client connection on socket 31
+2020-04-25 11:09:30  closing client connection on socket 7
+2020-04-25 11:09:30  closing client connection on socket 6
+2020-04-25 11:09:30  closing client connection on socket 10
+2020-04-25 11:20:03  admin is now offline
+received signal "Interrupt" (2)
+2020-04-25 11:34:33  new connection from 127.0.0.1 on socket 11
+2020-04-25 11:34:40  admin is now online on socket 5
+2020-04-25 11:35:04  admin is now offline
+2020-04-25 11:35:18  admin is now online on socket 5
+2020-04-25 11:36:04  admin is now offline
+2020-04-25 11:36:15  closing client connection on socket 11
+2020-04-25 11:37:29  new connection from 127.0.0.1 on socket 6
+2020-04-25 11:37:55  client in thread -590894272 starts writing...
+2020-04-25 11:38:01  client in thread -590894272 finished writing...
+2020-04-25 11:38:13  client in thread -590894272 starts reading...
+2020-04-25 11:38:16  client in thread -590894272 finished reading...
+2020-04-25 11:38:18  closing client connection on socket 6
+received signal "Quit" (3), stopping server...
+2020-04-25 11:58:57  (free_server): temporarily closing master socket...
+2020-04-25 11:58:59  (free_server): waiting for busy clients...
+2020-04-25 11:58:59  (free_server): resetting threads usage...
+2020-04-25 11:58:59  (free_server): cleaning up opened files...
+2020-04-25 11:58:59  (free_server): freeing allocated thread memory...
+2020-04-25 11:58:59  (stop_server): destroying locks and mutexes...
+2020-04-25 11:58:59  (stop_server): releasing server's lock file...
+2020-04-25 11:58:59  (stop_server): server termination complete!
+

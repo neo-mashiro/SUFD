@@ -1,5 +1,5 @@
 /*
-** daemon.c -- daemon server utilities, automatic threads management, dynamic reconfiguration, etc.
+** daemon.c -- daemon utilities, automatic threads management, dynamic reconfiguration, etc.
 */
 
 #include "define.h"
@@ -72,7 +72,7 @@ int free_server(void) {
     // then, all the client threads will eventually quit on their own, so we just sit and wait
     // this is because, idle threads blocking on accept will fail due to closed master socket
     // similarly, busy threads will eventually become idle and fail on accept as well
-    // failed accept has been properly handled at fserv.c on line 554, so that threads exit normally
+    // failed accept has been properly handled in fserv.c on line 551, so that threads exit normally
     logger("(free_server): waiting for busy clients...");
     for (int i = 0; i < thread_pool_size; i++) {
         if (thread_pool[i].tid == -1) continue;  // skip unused entry
@@ -130,7 +130,7 @@ int stop_server(void) {
     logger("(stop_server): server termination complete!\n");
     pthread_mutex_destroy(&logger_mutex);  // after the last log message
     close(lockfile);
-    // unlink("./shfd.log");  // should not delete file
+    // unlink("./sufd.log");  // should not delete file
     exit(0);  // terminate server
 }
 
@@ -175,12 +175,12 @@ int daemonize(void) {
 
     // redirect 0 to "/dev/null", 1 and 2 to server's log file
     int lf = open("/dev/null", O_RDWR);  // after we closed 0,1,2, now "/dev/null" will be opened on 0 (stdin)
-    lf = open("./shfd.log", O_WRONLY|O_CREAT|O_APPEND, 0640);  // open server's log file on 1 (stdout)
+    lf = open("./sufd.log", O_WRONLY|O_CREAT|O_APPEND, 0640);  // open server's log file on 1 (stdout)
     if (lf == -1 || lf > 1) {
         perror("open server log file");
         exit(-1);
     }
-    dup(lf);  // redirect stderr to the same server log file
+    dup(lf);  // redirect stderr to the same log file
 
     // lock server's log file to enforce only 1 running copy of the server
     struct flock fl;

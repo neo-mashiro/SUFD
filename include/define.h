@@ -4,8 +4,16 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <poll.h>
+#include <time.h>
+#include <fcntl.h>
+#include <ctype.h>
+#include <errno.h>
+#include <signal.h>
+#include <assert.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -13,17 +21,8 @@
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <poll.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <time.h>
-#include <signal.h>
-#include <ctype.h>
-#include <errno.h>
-#include <assert.h>
-#include "utils.h"
+#include "./utils.h"
 
-#define N_THREADS 128
 #define N 1000
 #define MEGEXTRA 1000000
 
@@ -35,7 +34,7 @@ extern int VERBOSE_MODE;
 
 extern int ssock;  // shell master socket
 extern int fsock;  // file master socket
-extern int fsock_tmp;  // store fsock's old value when fsock is temporarily down for reconfiguration
+extern int fsock_tmp;  // store fsock's old value when it's temporarily down for reconfiguration
 
 extern char* s_port;  // shell port number
 extern char* f_port;  // file port number
@@ -64,17 +63,13 @@ struct monitor_t {  // for dynamic threads management based on network traffic
     pthread_cond_t m_cond;
 } extern monitor;
 
-struct tracker_t {   // for real-time peer synchronization (replica consistency)
-    char* os[1024];  // operation queue: operations to be fetched and updated in order
-} extern tracker;
-
 struct echo_t {     // for server response
     char* status;   // OK / FAIL / ERR
     int code;       // server side error code
     char* message;  // client-friendly message
 };
 
-struct lock_t {               // for file access control
+struct lock_t {               // for CREW file access control
     pthread_mutex_t f_mtx;    // file access mutex
     pthread_cond_t f_cond;    // file access condition variable
     char f_name[256];         // file name (path)
@@ -94,7 +89,7 @@ int stop_server(void);
 
 int reset_server(void);
 
-void server_admin(int asock);
+void serve_admin(int asock);
 
 void reset_lock(int lock_id);
 
@@ -103,7 +98,5 @@ void* file_thread(void* fsock);
 void* signal_thread(void* set);
 
 void* monitor_thread(void* omitted);
-
-//void* tracker_thread(void* omitted);
 
 #endif

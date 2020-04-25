@@ -99,12 +99,12 @@ int socketConnect(const char* host, const char* port) {
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
         if ((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
-            perror("client: socket");
+            perror("socket");
             continue;
         }
 
         if (connect(sock, p->ai_addr, p->ai_addrlen) < 0) {
-            perror("client: connect");
+            perror("connect");
             close(sock);
             continue;
         }
@@ -113,12 +113,12 @@ int socketConnect(const char* host, const char* port) {
     }
 
     if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
+        fprintf(stderr, "failed to connect\n");
         return -3;
     }
 
     inet_ntop(p->ai_family, extractAddr(p->ai_addr), ipstr, sizeof(ipstr));
-    printf("client: connected to %s\n", ipstr);
+    printf("connected to %s\n", ipstr);
 
     freeaddrinfo(servinfo);
     return sock;
@@ -161,7 +161,7 @@ int setListener(const char* host, const char* port, int backlog) {
     }
 
     if (p == NULL) {
-        fprintf(stderr, "server: unable to bind an available listener\n");
+        fprintf(stderr, "unable to bind\n");
         return -2;
     }
 

@@ -30,7 +30,7 @@ int readLine(int file, char* buf, size_t size);
 ** @remark:   continuous sequences of blanks are treated as one blank
 **            this function mutates the first argument str
 **            --------------------------------------------------
-** @example:  char str[100] = "sick and   tired of tokenizers.";
+** @example:  char str[100] = "sick and  tired of tokenizers.";
 **            char* tokens[strlen(str)];
 **            int n = tokenize(str, tokens, strlen(str));
 **            for (int i = 0; i < n; i++) {

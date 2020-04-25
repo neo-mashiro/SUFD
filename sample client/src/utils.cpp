@@ -1,12 +1,73 @@
 /*
-** utils.c -- some useful network wrapper and utility functions
-**
-** @reference: CS 464/564 by Dr. Stefan Bruda - https://cs.ubishops.ca/home/cs464
-**             Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
-**             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
+** utils.c -- some useful wrapper functions
 */
 
-#include "../include/utils.h"
+#include "utils.h"
+
+int readLine(int file, char* buf, size_t size) {
+    size_t i;
+    int begin = 1;
+
+    for (i = 0; i < size; i++) {
+        char tmp;
+        int what = read(file, &tmp, 1);
+
+        if (what == -1) { return -1; }
+
+        if (begin) {
+            if (what == 0) { return -2; }
+            begin = 0;
+        }
+
+        if (what == 0 || tmp == '\n') {
+            buf[i] = '\0';
+            return i;
+        }
+        buf[i] = tmp;
+    }
+
+    buf[i] = '\0';
+    return i;
+}
+
+size_t tokenize(char* str, char** tokens, size_t n) {
+    size_t tok_size = 1;
+    tokens[0] = str;
+
+    size_t i = 0;
+    while (i < n) {
+        if (str[i] == ' ') {
+            str[i] = '\0';
+            i++;
+            for (; i < n && str[i] == ' '; i++) {}
+            if (i < n) {
+                tokens[tok_size] = str + i;
+                tok_size++;
+            }
+        } else {
+            i++;
+        }
+    }
+    return tok_size;
+}
+
+int checkDigit(const char* str) {
+    char buf[strlen(str) + 1];
+    strcpy(buf, str);
+    int len = strlen(buf);
+    if (buf[len - 1] == '\n') {
+        buf[len - 1] = '\0';
+    }
+    if (!isdigit(buf[0]) && buf[0] != '-') {  // first char is either digit or minus sign '-'
+        return 0;
+    }
+    for (int i = 1; i < len; i++) {
+        if (!isdigit(buf[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
 
 char* convertPort(unsigned short port) {
     static char port_str[10];
@@ -14,7 +75,7 @@ char* convertPort(unsigned short port) {
     return port_str;
 }
 
-void* getInAddr(struct sockaddr* sa) {
+void* extractAddr(struct sockaddr* sa) {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in *) sa)->sin_addr);
     } else {
@@ -23,7 +84,7 @@ void* getInAddr(struct sockaddr* sa) {
 }
 
 int socketConnect(const char* host, const char* port) {
-    int status, sockfd;
+    int status, sock;
     struct addrinfo hints, *servinfo, *p;
     char ipstr[INET6_ADDRSTRLEN];
 
@@ -33,18 +94,18 @@ int socketConnect(const char* host, const char* port) {
 
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-        return err_addr;
+        return -1;
     }
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
-            perror("client: socket");
+        if ((sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
+            perror("socket");
             continue;
         }
 
-        if (connect(sockfd, p->ai_addr, p->ai_addrlen) < 0) {
-            perror("client: connect");
-            close(sockfd);
+        if (connect(sock, p->ai_addr, p->ai_addrlen) < 0) {
+            perror("connect");
+            close(sock);
             continue;
         }
 
@@ -52,21 +113,21 @@ int socketConnect(const char* host, const char* port) {
     }
 
     if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
-        return err_connect;
+        fprintf(stderr, "failed to connect\n");
+        return -3;
     }
 
-    inet_ntop(p->ai_family, getInAddr(p->ai_addr), ipstr, sizeof(ipstr));
-    printf("client: connected to %s\n", ipstr);
+    inet_ntop(p->ai_family, extractAddr(p->ai_addr), ipstr, sizeof(ipstr));
+    printf("connected to %s\n", ipstr);
 
     freeaddrinfo(servinfo);
-    return sockfd;
+    return sock;
 }
 
 int socketTalk(int sockfd, char* req, int timeout, char* host) {
     if (send(sockfd, req, strlen(req), 0) < 0) {
         perror("send");
-        return err_send;
+        return -1;
     }
 
     struct pollfd pfds[1];
@@ -80,24 +141,23 @@ int socketTalk(int sockfd, char* req, int timeout, char* host) {
         int n_bytes;  // number of bytes received
 
         if (n_res < 0) {
-            continue;  // test
             perror("poll");
-            return err_poll;
+            return -2;
         }
 
         if (pfds[0].revents && POLLIN) {
             if ((n_bytes = recv(sockfd, res, sizeof(res) - 1, 0)) <= 0) {
                 if (n_bytes == 0) {  // when server shutdown it sends FIN to us
-                    printf("\nclient: connection closed by %s\n", host);
+                    printf("client: connection closed by %s\n", host);
                     return 0;  // return control and close socket in main()
                 } else {
                     perror("recv");
-                    return err_recv;
+                    return -3;
                 }
             }
         }
 
-        res[n_bytes] = '\0';
+        res[n_bytes] = '\0';  // null-terminated
 
         // convert line terminator \r\n to \n
         for (int i = 0; i < n_bytes; i++) {
@@ -140,7 +200,7 @@ int setListener(const char* host, const char* port, int backlog) {
 
     if ((status = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-        return err_addr;
+        return -1;
     }
 
     for (p = servinfo; p != NULL; p = p->ai_next) {
@@ -151,7 +211,7 @@ int setListener(const char* host, const char* port, int backlog) {
 
         if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
             perror("setsockopt");
-            return err_opt;
+            return -4;
         }
 
         if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
@@ -162,66 +222,56 @@ int setListener(const char* host, const char* port, int backlog) {
     }
 
     if (p == NULL) {
-        fprintf(stderr, "server: unable to bind an available listener\n");
-        return err_bind;
+        fprintf(stderr, "unable to bind\n");
+        return -2;
     }
 
     freeaddrinfo(servinfo);
 
     if (listen(listener, backlog) < 0) {
         close(listener);
-        return err_listen;
+        return -3;
     }
 
     return listener;
 }
 
-int readLine(int file, char* buf, size_t size) {
-    size_t i;
-    int begin = 1;
+int sendAll(int fd, const char* buf, int* len) {
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n = 0;
 
-    for (i = 0; i < size; i++) {
-        char tmp;
-        int what = read(file, &tmp, 1);
-
-        if (what == -1) { return -1; }
-
-        if (begin) {
-            if (what == 0) { return -2; }
-            begin = 0;
-        }
-
-        if (what == 0 || tmp == '\n') {
-            buf[i] = '\0';
-            return i;
-        }
-        // if (!tmp) {
-        //     return recv_nodata;
-        // }
-        buf[i] = tmp;
+    while (total < *len) {
+        n = send(fd, buf + total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
     }
 
-    buf[i] = '\0';
-    return i;
+    *len = total;  // return number of bytes actually sent in *len
+    return (n == -1 ? -1 : 0);  // return -1 on failure, 0 on success
 }
 
-size_t tokenize(char* str, char** tokens, size_t n) {
-    size_t tok_size = 1;
-    tokens[0] = str;
+int recvTimeOut(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
 
-    size_t i = 0;
-    while (i < n) {
-        if (str[i] == ' ') {
-            str[i] = '\0';
-            i++;
-            for (; i < n && str[i] == ' '; i++) {}
-            if (i < n) {
-                tokens[tok_size] = str + i;
-                tok_size++;
-            }
-        } else {
-            i++;
-        }
-    }
-    return tok_size;
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return recv(sd, buf, len, 0);  // return # of bytes received, or 0 if connection closed on the other end
+}
+
+int readTimeOut(int sd, char* buf, int len, int timeout) {
+    struct pollfd pfds;
+    pfds.fd = sd;
+    pfds.events = POLLIN;
+
+    int n = poll(&pfds, 1, timeout);
+    if (n == 0) { return -2; }   // timeout
+    if (n == -1) { return -1; }  // error
+
+    return read(sd, buf, len);  // return # of bytes received
 }

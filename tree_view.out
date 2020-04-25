@@ -1,44 +1,27 @@
 .
-├── [4.0K]  client
-│   ├── [4.0K]  bin
-│   │   └── [ 42K]  sshell
-│   ├── [4.0K]  build
-│   │   ├── [ 38K]  main.o
-│   │   └── [ 29K]  utils.o
-│   ├── [4.0K]  doc
-│   │   └── [  46]  shconfig
+├── [4.0K]  build
+├── [4.0K]  include
+│   ├── [2.6K]  define.h
+│   └── [3.5K]  utils.h
+├── [6.9K]  LICENSE
+├── [ 362]  Makefile
+├── [ 20K]  README.md
+├── [4.0K]  sample client
+│   ├── [  45]  config.ini
 │   ├── [4.0K]  include
 │   │   └── [4.0K]  utils.h
-│   ├── [ 423]  Makefile
-│   ├── [6.0K]  README.md
-│   ├── [ 42K]  rsshell
-│   ├── [4.0K]  src
-│   │   ├── [ 15K]  main.cpp
-│   │   └── [6.0K]  utils.cpp
-│   └── [4.0K]  test
-│       ├── [2.7K]  test
-│       └── [ 113]  testmore
-├── [   3]  README.md
-├── [4.0K]  server
-│   ├── [4.0K]  bin
-│   ├── [4.0K]  build
-│   ├── [4.0K]  doc
-│   ├── [4.0K]  include
-│   │   ├── [2.9K]  define.h
-│   │   └── [3.5K]  utils.h
-│   ├── [ 426]  Makefile
-│   ├── [ 499]  README.md
-│   ├── [4.0K]  src
-│   │   ├── [8.0K]  daemon.c
-│   │   ├── [ 18K]  fserv.c
-│   │   ├── [5.6K]  main.c
-│   │   ├── [ 495]  session.c
-│   │   ├── [1.3K]  sig.c
-│   │   ├── [8.4K]  sserv.c
-│   │   └── [5.4K]  utils.c
-│   └── [4.0K]  test
-│       ├── [  50]  test
-│       └── [  51]  test2
+│   ├── [ 331]  Makefile
+│   └── [4.0K]  src
+│       ├── [ 12K]  main.cpp
+│       └── [7.0K]  utils.cpp
+├── [4.0K]  src
+│   ├── [8.0K]  daemon.c
+│   ├── [ 18K]  fserv.c
+│   ├── [4.6K]  main.c
+│   ├── [1.3K]  sig.c
+│   ├── [9.1K]  sserv.c
+│   └── [5.3K]  utils.c
+├── [4.9K]  sufd.log
 └── [   0]  tree_view.out
 
-14 directories, 27 files
+6 directories, 18 files

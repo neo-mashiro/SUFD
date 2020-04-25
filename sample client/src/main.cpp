@@ -1,15 +1,8 @@
 /*
-** sshell.c -- Assignment 2 (CS 464/564), Bishop's University
+** sshell.c -- a simple shell that talks to the remote server
 **
-** @author:    Wentao Lu (002276355), Yi Ren (002212345)
-** @date:      2020/02/15
-** @reference: CS 464/564 Course website - https://cs.ubishops.ca/home/cs464
-**             Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
-**             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
-** @acknowledgement:
-**             this code is adapted from solution to Assignment 1 by Dr. Stefan Bruda:
-**             https://cs.ubishops.ca/home/cs464/sshell.tar.gz
-**             changes have been made to include my own modules and accommodate Assignment 2
+** @author: Wentao Lu
+** @date: 2020/02/15
 */
 
 #include <stdio.h>
@@ -21,13 +14,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
-
-#include "../include/utils.h"
+#include "utils.h"
 
 // global settings
 const char* path[] = {"/bin", "/usr/bin", 0};
 const char* prompt = "sshell > ";
-const char* config = "./doc/shconfig";
+const char* config = "config.ini";
 
 // configuration
 size_t hsize = 0, vsize = 0;  // terminal dimensions
@@ -39,9 +31,6 @@ typedef void (*handler_t)(int);
 
 /* define zombie reaper handler (enable) */
 void enable(int signal) {
-    // "sa.sa_handler = SIG_IGN" reaps zombie processes automatically
-    // however, "SIG_IGN" only works with POSIX.1-2001 and later, not with POSIX.1-1990
-    // hence, a user-defined handler with waitpid() is preferred to reap asynchronous child processes
 	(void)signal;  // suppress the warning of unused variable
 	int saved_errno = errno;  // waitpid() might overwrite errno, so we save and restore it
 	while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
@@ -53,10 +42,6 @@ void disable(int signal) {}
 
 /* register zombie reaper handler */
 void registerZombieReaper(struct sigaction* sa_ptr, handler_t f) {
-    // when a child process terminates, its info remains in the process table, i.e. a zombie
-    // with zombies, waitpid() can trace the exit info of a child even if that child has finished
-    // hence, if we wait/waitpid a child, it will be removed from the process table and die forever
-    // in other cases, they must be reaped to clean up the process table which could be exhausted
     sa_ptr->sa_handler = f;  // user-defined handler
     if (sigaction(SIGCHLD, sa_ptr, NULL) == -1) {
         perror("sigaction");
@@ -103,51 +88,6 @@ int execCommand(const char* command, char* const argv[], char* const envp[], con
     }
 }
 
-// execute the internal command `more`, which displays the content of files
-void execMore(const char* filename) {
-    const size_t maxline = hsize + 256;
-    char* line = new char[maxline + 1];
-    line[maxline] = '\0';
-
-    printf("--- more: %s ---\n", filename);
-
-    int fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        sprintf(line, "more: %s", filename);
-        perror(line);
-        delete[] line;
-        return;
-    }
-
-    while (1) {
-        for (size_t i = 0; i < vsize; i++) {
-            int n = readLine(fd, line, maxline);
-            if (n < 0) {
-                if (n != -2) {  // != no data
-                    sprintf(line, "more: %s", filename);
-                    perror(line);
-                }
-                // EOF
-                close(fd);
-                delete[] line;
-                return;
-            }
-            line[hsize] = '\0';  // trim longer lines
-            printf("%s\n", line);
-        }
-        // next page...
-        printf(":");
-        fflush(stdout);
-        fgets(line, 10, stdin);
-        if (line[0] != ' ') {
-            close(fd);
-            delete[] line;
-            return;
-        }
-    }
-    delete[] line;
-}
-
 int main(int argc, char** argv, char** envp) {
     struct sigaction sa;  // signal action
     sigemptyset(&sa.sa_mask);
@@ -162,27 +102,13 @@ int main(int argc, char** argv, char** envp) {
     int keepalive = 0;   // keepalive mode is disabled by default
 
     // print welcome message on startup
-    printf("Welcome to simple shell v2.0.\n");
+    printf("Welcome to simple shell.\n");
 
     // open or create configuration file
     int confd = open(config, O_RDONLY);
     if (confd < 0) {
         perror("config");
         fprintf(stderr, "config: cannot open the configuration file.\n");
-        fprintf(stderr, "config: will now attempt to create one.\n");
-        confd = open(config, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR);
-        if (confd < 0) {
-            perror(config);
-            fprintf(stderr, "config: cannot create the configuration file...\n");
-            return 1;
-        }
-        close(confd);
-        confd = open(config, O_RDONLY);  // re-open the file read-only
-        if (confd < 0) {
-            perror(config);
-            fprintf(stderr, "config: giving up...\n");
-            return 1;
-        }
     }
 
     // load configuration file
@@ -216,21 +142,21 @@ int main(int argc, char** argv, char** envp) {
     // validate configuration
     if (hsize <= 0) {  // invalid horizontal size, will use defaults and write to configuration
         hsize = 75;
-        confd = open(config, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR);
+        confd = open(config, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
         write(confd, "HSIZE 75\n", strlen("HSIZE 75\n"));
         close(confd);
         fprintf(stderr, "%s: invalid horizontal terminal size, will use the default\n", config);
     }
     if (vsize <= 0) {  // invalid vertical size, will use defaults and write to configuration
         vsize = 40;
-        confd = open(config, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR);
+        confd = open(config, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
         write(confd, "VSIZE 40\n", strlen("VSIZE 40\n"));
         close(confd);
         fprintf(stderr, "%s: invalid vertical terminal size, will use the default\n", config);
     }
     if (port > 65535) {  // invalid port number
         port = 9001;
-        confd = open(config, O_WRONLY|O_CREAT|O_APPEND, S_IRUSR|S_IWUSR);
+        confd = open(config, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR);
         write(confd, "RPORT 9001\n", strlen("RPORT 9001\n"));
         close(confd);
         fprintf(stderr, "%s: invalid port number, will use the default 9001\n", config);
@@ -312,14 +238,6 @@ int main(int argc, char** argv, char** envp) {
                 printf("Bye\n");
                 return 0;
             }
-            else if (strcmp(real_com[0], "more") == 0) {
-                if (real_com[1] == 0) {
-                    printf("more: too few arguments\n");
-                }
-                for (size_t i = 1; real_com[i] != 0; i++) {  // list all files
-                    execMore(real_com[i]);
-                }
-            }
             else if (strcmp(real_com[0], "keepalive") == 0) {
                 keepalive = 1;
                 printf("keepalive mode turned on.\n");
@@ -373,7 +291,7 @@ int main(int argc, char** argv, char** envp) {
             if (bg == 1) {
                 int childp = fork();
                 if (childp == 0) {  // child, socket is copied, reference count + 1
-                    if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
+                    if ((rc = socketTalk(sock, req, 6500, host)) < 0) {
                         socketClose(&sock);  // child silently close connection (no message) unless error occured
                         printf("client child: socketTalk() returns %d, connection closed\n", rc);
                         exit(rc);
@@ -393,7 +311,7 @@ int main(int argc, char** argv, char** envp) {
             }
             // foreground command
             else {
-                if ((rc = socketTalk(sock, req, 2500, host)) < 0) {
+                if ((rc = socketTalk(sock, req, 6500, host)) < 0) {
                     socketClose(&sock);
                     printf("client: socketTalk() returns %d, connection closed\n", rc);
                     exit(rc);

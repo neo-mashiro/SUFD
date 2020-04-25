@@ -4,10 +4,11 @@
 
 #include "define.h"
 
-void server_admin(int asock) {
-    const char* welcome = "Welcome to the daemon! Please issue your shell command. \nType MONITOR to view threads usage, type QUIT to exit.\n";
+void serve_admin(int asock) {
     const char* prompt = "> ";
     const char* path[] = {"/bin", "/usr/bin", 0};
+    const char* welcome = "Welcome to the daemon! Please issue your shell command, or type QUIT to exit.\n"
+                          "You can type MONITOR to view the current threads usage, hit Enter to stop.\n";
 
     // prepare for execution
     int status = 0;     // exit status of the child process
@@ -118,16 +119,30 @@ void server_admin(int asock) {
                     else {
                         echo.status = "OK";
                         echo.code = 0;
-                        echo.message = "Last executed shell output sent";
+                        echo.message = "Output printed";
                     }
                 }
             }
             else if (strcasecmp(argv[0], "MONITOR") == 0) {
-                // show threads usage information
+                // display threads usage info per second until admin hits Enter
                 char info[128];
-                memset(info, 0, sizeof(info));
-                sprintf(info, "Threads Usage: %d out of %d total threads are currently active\n", monitor.t_act, monitor.t_tot);
-                send(asock, info, strlen(info), 0);
+                while (1) {
+                    memset(info, 0, sizeof(info));
+                    sprintf(info, "Threads Usage: %d out of %d total threads are currently active\n", monitor.t_act, monitor.t_tot);
+                    send(asock, info, strlen(info), 0);
+                    memset(info, 0, sizeof(info));
+                    int x_bytes = recvTimeOut(asock, info, sizeof(info), 1000);  // non-block recv()
+                    if (x_bytes == -1) {
+                        if (errno == EINTR) { continue; }
+                        perror("recvTimeOut");
+                        fflush(stderr);
+                        exit(47);
+                    }
+                    else if (x_bytes == 0 || x_bytes == -2) {  // no data
+                        continue;
+                    }
+                    if (info[0] == '\n' || info[0] == '\r')  break;
+                }
                 continue;
             }
             else {
@@ -155,7 +170,7 @@ void server_admin(int asock) {
                 else {
                     memset(output, 0, sizeof(output));  // flush output buffer
                     while (1) {
-                        int n_bytes = readTimeOut(channel[0], output, sizeof(output), 300);  // non-block read()
+                        int n_bytes = readTimeOut(channel[0], output, sizeof(output), 200);  // non-block read()
                         if (n_bytes == -1) {
                             if (errno == EINTR) { continue; }
                             perror("readTimeOut");
@@ -180,7 +195,7 @@ void server_admin(int asock) {
                     echo.code = status;
                     if (status == 0) {
                         echo.status = "OK";
-                        echo.message = "Command executed successfully";
+                        echo.message = "Command execution complete";
                     }
                     else {
                         echo.status = "ERR";

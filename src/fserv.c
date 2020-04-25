@@ -34,7 +34,7 @@ int opener(int argc, char** argv, struct echo_t* echo) {
     fl.l_start = 0;
     fl.l_len = 0;  // lock to EOF
 
-    int fd = open(filename, O_RDWR);  // if file already opened by another thread, we get a new fd for the same file
+    int fd = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);  // if file already opened by another thread, we get a new fd for the same file
     if (fd < 0) {
         echo->status = "FAIL";
         echo->code = errno;
@@ -42,7 +42,7 @@ int opener(int argc, char** argv, struct echo_t* echo) {
         return 0;
     }
 
-    if (fcntl(fd, F_OFD_SETLK, &fl) == -1) {  // open file description locks for synchronization among threads
+    if (fcntl(fd, F_OFD_SETLK, &fl) == -1) {  // OFD (open file description) locks are mutual exclusive among threads
         close(fd);  // when file already opened, we just close this new fd and use the previously opened fd
         echo->status = "ERR";
         echo->message = "file already opened";
@@ -133,7 +133,7 @@ int seeker(int argc, char** argv, struct echo_t* echo, int lock_id) {
     char temp[100];
     memset(temp, 0, sizeof(temp));
     sprintf(temp, "seek pointer is now %d bytes from the beginning of the file", pos);
-    echo->message = temp;
+    echo->message = strdup(temp);
 
     return 0;
 }
@@ -379,7 +379,8 @@ void clean_client(int csock) {
 }
 
 void serve_client(int csock) {
-    const char* welcome = "Welcome to the database! \nAvailable commands: FOPEN FSEEK FREAD FWRITE FCLOSE QUIT\n";
+    const char* welcome = "Welcome to the database! Please issue your command, or type QUIT to exit.\n"
+                          "Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE\n";
     const char* prompt = "> ";
 
     // welcome client socket and add it to poll
@@ -404,7 +405,7 @@ void serve_client(int csock) {
             break;
         }
 
-        if ((n_res = poll(cfds, 1, 120000)) != 0) {  // time out after 2 minutes of inactivity
+        if ((n_res = poll(cfds, 1, 60000)) != 0) {  // time out after 1 minute of inactivity
             if (n_res < 0) {
                 perror("poll");
                 fflush(stderr);
@@ -584,7 +585,7 @@ void* file_thread(void* id) {
         clean_client(csock);
 
         // thread quits itself if there's too little network traffic
-        int lower_bound = monitor.t_tot - monitor.t_inc - 1;
+        int lower_bound = monitor.t_tot - monitor.t_inc;
         if (monitor.t_act < lower_bound) {
             pthread_mutex_lock(&monitor.m_mtx);
             monitor.t_tot--;
