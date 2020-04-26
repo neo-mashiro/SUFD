@@ -1,6 +1,8 @@
 SUFD: A Simple MultiThread Unix File Daemon in C
 ================================================
 
+`Repository Statistics API <https://api.github.com/repos/neo-mashiro/SUFD>`_
+
 **Build Status & License & Repo Size & Code Size**
 
 .. image:: https://img.shields.io/travis/neo-mashiro/SUFD/master?label=Master%20Build&style=plastic
@@ -14,8 +16,6 @@ SUFD: A Simple MultiThread Unix File Daemon in C
 
 .. image:: https://img.shields.io/github/languages/code-size/neo-mashiro/SUFD?color=%20%09%237B68EE&label=Code%20Size&style=plastic
    :target: www.google.com
-
-`Repository statistics API <https://api.github.com/repos/neo-mashiro/SUFD>`_
 
 -----
 
@@ -120,110 +120,182 @@ First we start the daemon in background, a log file is created. We can play with
 
     $ ./sufd -t 8 -T 24 -D
     $ telnet localhost 9002
+..
 
-    Trying 127.0.0.1...
-    Connected to localhost.
-    Escape character is '^]'.
-    Welcome to the database! Please issue your command, or type QUIT to exit.
-    Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE
-    > fopen test
-    OK 8 file opened successfully
-    > fwrite 8 apple
-    OK 0 data written to the file
-    > fseek 8 -5
-    OK 0 seek pointer is now 0 bytes from the beginning of the file
-    > fread 8 5
-    OK 5 apple
-    > quit
-    Connection closed by foreign host.
+    | Trying 127.0.0.1...
+    | 
+    | Connected to localhost.
+    | 
+    | Escape character is '^]'.
+    | 
+    | Welcome to the database! Please issue your command, or type QUIT to exit.
+    | 
+    | Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE
+    | 
+    | > fopen test
+    | 
+    | OK 8 file opened successfully
+    | 
+    | > fwrite 8 apple
+    | 
+    | OK 0 data written to the file
+    | 
+    | > fseek 8 -5
+    | 
+    | OK 0 seek pointer is now 0 bytes from the beginning of the file
+    | 
+    | > fread 8 5
+    | 
+    | OK 5 apple
+    | 
+    | > quit
+    | 
+    | Connection closed by foreign host.
 
 Now we connect to the shell server on port 9001, issue a ``monitor`` command to view the threads usage data.
 
 .. code-block:: shell
 
     $ telnet localhost 9001
+..
 
-    Trying 127.0.0.1...
-    Connected to localhost.
-    Escape character is '^]'.
-    Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
-    You can type MONITOR to view the current threads usage, hit Enter to stop.
-    > ls -l
-    OK 0 Command execution complete
-    > cprint
-    total 136
-    -rw-rw-r-- 1 neo-mashiro neo-mashiro 7048 Apr 11 15:48 LICENSE
-    -rw-r----- 1 neo-mashiro neo-mashiro 3898 Apr 25 11:35 Makefile
-    OK 0 Output printed
-    > monitor
-    Threads Usage: 1 out of 8 total threads are currently active
-    Threads Usage: 1 out of 8 total threads are currently active
-    ...
-    > quit
-    Connection closed by foreign host.
+    | Trying 127.0.0.1...
+    | 
+    | Connected to localhost.
+    | 
+    | Escape character is '^]'.
+    | 
+    | Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
+    | 
+    | You can type MONITOR to view the current threads usage, hit Enter to stop.
+    | 
+    | > ls -l
+    | 
+    | OK 0 Command execution complete
+    | 
+    | > cprint
+    | 
+    | total 136
+    | 
+    | -rw-rw-r-- 1 neo-mashiro neo-mashiro 7048 Apr 11 15:48 LICENSE
+    | 
+    | -rw-r----- 1 neo-mashiro neo-mashiro 3898 Apr 25 11:35 Makefile
+    | 
+    | OK 0 Output printed
+    | 
+    | > monitor
+    | 
+    | Threads Usage: 1 out of 8 total threads are currently active
+    | 
+    | Threads Usage: 1 out of 8 total threads are currently active
+    | 
+    | ...
+    | 
+    | > quit
+    | 
+    | Connection closed by foreign host.
 
 To test the dynamic threads management, let's simulate some ``telnet`` requests to the file server one at a time per second, put these requests in the background so we don't need to open too many terminals. After 60 seconds, these sessions will automatically expire one by one, so that we don't need to explicitly switch them to the foreground and quit.
 
 .. code-block:: shell
 
     $ telnet localhost 9002 &
+..
 
-    [25] 28067
-    Trying 127.0.0.1...
-    Connected to localhost.
-    Escape character is '^]'.
-    [25] + 28067 suspended (tty output) telnet localhost 9002
-    ...
+    | [25] 28067
+    | 
+    | Trying 127.0.0.1...
+    | 
+    | Connected to localhost.
+    | 
+    | Escape character is '^]'.
+    | 
+    | [25] + 28067 suspended (tty output) telnet localhost 9002
+    | 
+    | ...
 
 .. code-block:: shell
 
     $ jobs
+..
 
-    [1] suspended (tty output) telnet localhost 9002
-    [2] suspended (tty output) telnet localhost 9002
-    [3] suspended (tty output) telnet localhost 9002
-    ...
+    | [1] suspended (tty output) telnet localhost 9002
+    | 
+    | [2] suspended (tty output) telnet localhost 9002
+    | 
+    | [3] suspended (tty output) telnet localhost 9002
+    | 
+    | ...
 
 .. code-block:: shell
 
     $ fg
+..
 
-    [1] - 27858 continued telnet localhost 9002
-    Welcome to the database! Please issue your command, or type QUIT to exit.
-    Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE
-    > your session has expired
-    Connection closed by foreign host.
-    ...
+    | [1] - 27858 continued telnet localhost 9002
+    | 
+    | Welcome to the database! Please issue your command, or type QUIT to exit.
+    | 
+    | Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE
+    | 
+    | > your session has expired
+    | 
+    | Connection closed by foreign host.
+    | 
+    | ...
 
 As a number of clients have connected to the server, meanwhile we can observe how threads data change over time in the log file. The output is pretty much straightforward: when all the 8 preallocated threads are active, the server allocates another batch of 8 threads. Once the number of threads reaches the limit 24, further connections will be pending in the queue. After 60 seconds, as file clients start to quit and many threads become idle, some exit themselves.
 
 .. code-block:: shell
 
     $ telnet localhost 9001
+..
 
-    Trying 127.0.0.1...
-    Connected to localhost.
-    Escape character is '^]'.
-    Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
-    You can type MONITOR to view the current threads usage, hit Enter to stop.
-    > monitor
-    Threads Usage: 0 out of 8 total threads are currently active
-    Threads Usage: 1 out of 8 total threads are currently active
-    Threads Usage: 2 out of 8 total threads are currently active
-    ...
-    Threads Usage: 8 out of 16 total threads are currently active
-    Threads Usage: 9 out of 16 total threads are currently active
-    ...
-    Threads Usage: 23 out of 24 total threads are currently active
-    Threads Usage: 24 out of 24 total threads are currently active
-    ...
-    Threads Usage: 23 out of 24 total threads are currently active
-    Threads Usage: 22 out of 24 total threads are currently active
-    ...
-    Threads Usage: 2 out of 10 total threads are currently active
-    Threads Usage: 1 out of 9 total threads are currently active
-    Threads Usage: 0 out of 8 total threads are currently active
-    ...
+    | Trying 127.0.0.1...
+    | 
+    | Connected to localhost.
+    | 
+    | Escape character is '^]'.
+    | 
+    | Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
+    | 
+    | You can type MONITOR to view the current threads usage, hit Enter to stop.
+    | 
+    | > monitor
+    | 
+    | Threads Usage: 0 out of 8 total threads are currently active
+    | 
+    | Threads Usage: 1 out of 8 total threads are currently active
+    | 
+    | Threads Usage: 2 out of 8 total threads are currently active
+    | 
+    | ...
+    | 
+    | Threads Usage: 8 out of 16 total threads are currently active
+    | 
+    | Threads Usage: 9 out of 16 total threads are currently active
+    | 
+    | ...
+    | 
+    | Threads Usage: 23 out of 24 total threads are currently active
+    | 
+    | Threads Usage: 24 out of 24 total threads are currently active
+    | 
+    | ...
+    | 
+    | Threads Usage: 23 out of 24 total threads are currently active
+    | 
+    | Threads Usage: 22 out of 24 total threads are currently active
+    | 
+    | ...
+    | 
+    | Threads Usage: 2 out of 10 total threads are currently active
+    | 
+    | Threads Usage: 1 out of 9 total threads are currently active
+    | 
+    | Threads Usage: 0 out of 8 total threads are currently active
+    | 
+    | ...
 
 Now let's send some signals to the server, with the expectation that they will be recorded but ignored.
 
@@ -231,11 +303,14 @@ Now let's send some signals to the server, with the expectation that they will b
 
     $ kill -SIGINT 27698
     $ kill -SIGPIPE 27698
-    $ cat sufd.log
+    $ emacs -nw sufd.log
+..
 
-    ...
-    received signal "Interrupt" (2)
-    received signal "Broken pipe" (13)
+    | ...
+    | 
+    | received signal "Interrupt" (2)
+    | 
+    | received signal "Broken pipe" (13)
 
 When the server receives a *SIGHUP*, it attempts to reload itself, but
 will block and wait for busy clients first. This can be seen from the
@@ -246,19 +321,31 @@ After the server completes reloading, it's running like a fresh restart.
 
     $ kill -SIGHUP 27698
     $ emacs -nw sufd.log
+..
 
-    ...
-    received signal "Hangup" (1), reloading server...
-    2020-04-11 10:02:21 (free_server): temporarily closing master socket...
-    2020-04-11 10:02:23 (free_server): waiting for busy clients...
-    2020-04-11 10:03:03 closing client connection on socket 7
-    2020-04-11 10:03:04 closing client connection on socket 10
-    2020-04-11 10:03:12 (free_server): resetting threads usage...
-    2020-04-11 10:03:12 (free_server): cleaning up opened files...
-    2020-04-11 10:03:12 (free_server): freeing allocated thread memory...
-    2020-04-11 10:03:12 (reset_server): re-establishing master socket connection...
-    2020-04-11 10:03:12 (reset_server): re-allocating thread pool...
-    2020-04-11 10:03:12 (reset_server): server reloading complete!
+    | ...
+    | 
+    | received signal "Hangup" (1), reloading server...
+    | 
+    | 2020-04-11 10:02:21 (free_server): temporarily closing master socket...
+    | 
+    | 2020-04-11 10:02:23 (free_server): waiting for busy clients...
+    | 
+    | 2020-04-11 10:03:03 closing client connection on socket 7
+    | 
+    | 2020-04-11 10:03:04 closing client connection on socket 10
+    | 
+    | 2020-04-11 10:03:12 (free_server): resetting threads usage...
+    | 
+    | 2020-04-11 10:03:12 (free_server): cleaning up opened files...
+    | 
+    | 2020-04-11 10:03:12 (free_server): freeing allocated thread memory...
+    | 
+    | 2020-04-11 10:03:12 (reset_server): re-establishing master socket connection...
+    | 
+    | 2020-04-11 10:03:12 (reset_server): re-allocating thread pool...
+    | 
+    | 2020-04-11 10:03:12 (reset_server): server reloading complete!
 
 Again let's connect to the file server a few times (in background). This time we send *SIGQUIT* to stop the server. On receiving *SIGQUIT*, the server waits for busy clients and attempts to terminate, see the time difference in the log file.
 
@@ -266,19 +353,31 @@ Again let's connect to the file server a few times (in background). This time we
 
     $ kill -SIGQUIT 27698
     $ emacs -nw sufd.log
+..
 
-    ...
-    received signal "Quit" (3), stopping server...
-    2020-04-11 10:16:25 (free_server): temporarily closing master socket...
-    2020-04-11 10:16:27 (free_server): waiting for busy clients...
-    2020-04-11 10:17:14 closing client connection on socket 15
-    2020-04-11 10:17:15 closing client connection on socket 10
-    2020-04-11 10:17:16 (free_server): resetting threads usage...
-    2020-04-11 10:17:16 (free_server): cleaning up opened files...
-    2020-04-11 10:17:16 (free_server): freeing allocated thread memory...
-    2020-04-11 10:17:16 (stop_server): destroying locks and mutexes...
-    2020-04-11 10:17:16 (stop_server): releasing server's lock file...
-    2020-04-11 10:17:16 (stop_server): server termination complete!
+    | ...
+    | 
+    | received signal "Quit" (3), stopping server...
+    | 
+    | 2020-04-11 10:16:25 (free_server): temporarily closing master socket...
+    | 
+    | 2020-04-11 10:16:27 (free_server): waiting for busy clients...
+    | 
+    | 2020-04-11 10:17:14 closing client connection on socket 15
+    | 
+    | 2020-04-11 10:17:15 closing client connection on socket 10
+    | 
+    | 2020-04-11 10:17:16 (free_server): resetting threads usage...
+    | 
+    | 2020-04-11 10:17:16 (free_server): cleaning up opened files...
+    | 
+    | 2020-04-11 10:17:16 (free_server): freeing allocated thread memory...
+    | 
+    | 2020-04-11 10:17:16 (stop_server): destroying locks and mutexes...
+    | 
+    | 2020-04-11 10:17:16 (stop_server): releasing server's lock file...
+    | 
+    | 2020-04-11 10:17:16 (stop_server): server termination complete!
 
 If we need to force stop the server, sending the uncatchable *SIGKILL* will always work.
 
@@ -296,12 +395,17 @@ In case ``telnet`` or a bash shell is not available in some operating systems, t
     $ cd client           # change to the client subfolder
     $ make clean && make  # build target
     $ ./sshell            # run the client shell
+..
 
 On startup, this client reads a configuration file ``config.ini`` in its root folder, which has four lines:
-    VSIZE 40
-    HSIZE 75
-    RHOST localhost
-    RPORT 9001
+
+    | VSIZE 40
+    | 
+    | HSIZE 75
+    | 
+    | RHOST localhost
+    | 
+    | RPORT 9001
 
 The width and height of the terminal window is specified by *VSIZE* and *HSIZE*, respectively. *RHOST* is followed by a host name, *RPORT* is followed by a port number, so that the simple shell is able to connect to a server and issue remote commands. To use it like a local Unix shell, a command must be prefixed with ``!``, otherwise, it is treated as a request (remote command) to be sent to the server. To issue a command in background, it must be prefixed with ``&``, rather than being suffixed with ``&``. This is how it differs from a real bash shell. Background commands are implemented with the use of ``fork``, ``execve`` and sometimes ``waitpid``, zombie processes are reaped as appropriate.
 
