@@ -12,10 +12,10 @@ SUFD: A Simple MultiThread Unix File Daemon in C
    :target: http://creativecommons.org/publicdomain/zero/1.0/
 
 .. image:: https://img.shields.io/github/repo-size/neo-mashiro/SUFD?color=%2300BFFF&label=Repo%20Size&style=plastic
-   :target: www.google.com
+   :target: https://github.com/neo-mashiro/SUFD
 
 .. image:: https://img.shields.io/github/languages/code-size/neo-mashiro/SUFD?color=%20%09%237B68EE&label=Code%20Size&style=plastic
-   :target: www.google.com
+   :target: https://github.com/neo-mashiro/SUFD
 
 -----
 
@@ -33,7 +33,7 @@ SUFD: A Simple MultiThread Unix File Daemon in C
 Introduction
 ^^^^^^^^^^^^
 
-SUFD is a simple daemon that simulates a flat file database which allows multiple clients to connect and access files. It is expected to interact with ``telnet`` or a similar client application. The goal of this project is to practice building a multithread server in a heavy-traffic environment. To do so in a portable manner, this implementation is based on the socket API, Unix IPC and POSIX threads without using any third-party libraries. The daemon binds to one port as a shell server, which accepts shell commands from a local administrator. It also binds to another port as a file server, which serves multiple clients who want to manipulate files.
+SUFD is a simple daemon that simulates a flat-file database that allows multiple clients to connect and access files. It is expected to interact with ``telnet`` or a similar client application. The goal of this project is to practice building a multithread server in a heavy-traffic environment. To do so in a portable manner, this implementation is based on the socket API, Unix IPC and POSIX threads without using any third-party libraries. The daemon binds to one port as a shell server, which accepts shell commands from a local administrator. It also binds to another port as a file server, which serves multiple clients who want to manipulate files.
 
 The shell server is intended for internal use only. It binds to the loopback address with backlog set to 1, so that only 1 local connection can be accepted. Once a command is issued, the output will be stored in a pipe, but won't be sent back until the admin issues a ``cprint``, which prints the output of the last executed shell command. The admin user can disconnect by typing ``quit``, or view the dynamic threads usage information by issuing a ``monitor`` command, this requests the server to continuously send such data per second until the admin hits Enter. If no command has been issued, the session expires after 5 minutes of inactivity.
 
@@ -114,7 +114,7 @@ In this application protocol, the ``-p`` option merely serves as a decorator but
 Integration Test
 ^^^^^^^^^^^^^^^^
 
-First we start the daemon in background, a log file is created. We can play with the file server from multiple terminals using ``telnet``. With the delay mode turned on, it is easy to observe the reader writer synchronization behaviour.
+First we start the daemon in background, a log file is created. We can play with the file server from multiple terminals using ``telnet``. With the delay mode turned on, it is easy to observe the reader writer synchronization behavior.
 
 .. code-block:: bash
 
