@@ -1,0 +1,28 @@
+#fintable {
+  font-size: 13px;
+  font-family: Trebuchet MS, Open Sans, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#fintable td,
+#fintable th {
+  border: 1px solid #ddd;
+  padding: 8px;
+}
+
+#fintable tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+
+#fintable tr:hover {
+  background-color: #ddd;
+}
+
+#fintable th {
+  padding-top: 12px;
+  padding-bottom: 12px;
+  text-align: left;
+  background-color: #4caf50;
+  color: white;
+}
