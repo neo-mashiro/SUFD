@@ -118,7 +118,7 @@ First we start the daemon in background, a log file is created. We can play with
 
 .. code-block:: bash
 
-    $ ./sufd -t 8 -T 24 -D
+    $ ./sufd -t 4 -T 8 -D
     $ telnet localhost 9002
 ..
 
@@ -152,16 +152,15 @@ Now we connect to the shell server on port 9001, issue a ``monitor`` command to 
     | Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
     | You can type MONITOR to view the current threads usage, hit Enter to stop.
     | >
-    | > ls -l
+    | > uname -v
     | OK 0 Command execution complete
     | > cprint
-    | total 136
-    | -rw-rw-r-- 1 neo-mashiro neo-mashiro 7048 Apr 11 15:48 LICENSE
-    | -rw-r----- 1 neo-mashiro neo-mashiro 3898 Apr 25 11:35 Makefile
+    | #86~16.04.1-Ubuntu SMP Mon Jan 20 11:02:50 UTC 2020
     | OK 0 Output printed
+    | > 
     | > monitor
-    | Threads Usage: 1 out of 8 total threads are currently active
-    | Threads Usage: 1 out of 8 total threads are currently active
+    | Threads Usage: 1 out of 4 total threads are currently active
+    | Threads Usage: 1 out of 4 total threads are currently active
     | ...
     | > quit
     | Connection closed by foreign host.
@@ -202,7 +201,7 @@ To test the dynamic threads management, let's simulate some ``telnet`` requests 
     | Connection closed by foreign host.
     | ...
 
-As a number of clients have connected to the server, meanwhile we can observe how threads data change over time in the log file. The output is pretty much straightforward: when all the 8 preallocated threads are active, the server allocates another batch of 8 threads. Once the number of threads reaches the limit 24, further connections will be pending in the queue. After 60 seconds, as file clients start to quit and many threads become idle, some exit themselves.
+As a number of clients have connected to the server, meanwhile we can observe how threads data change over time in the log file. The output is pretty much straightforward: when all the 4 preallocated threads are active, the server allocates another batch of 4 threads. Once the number of threads reaches the limit 8, further connections will be pending in the queue. After 60 seconds, as file clients start to quit and many threads become idle, some exit themselves.
 
 .. code-block:: shell
 
@@ -214,23 +213,23 @@ As a number of clients have connected to the server, meanwhile we can observe ho
     | Escape character is '^]'.
     | Welcome to the daemon! Please issue your shell command, or type QUIT to exit.
     | You can type MONITOR to view the current threads usage, hit Enter to stop.
+    | >
     | > monitor
-    | Threads Usage: 0 out of 8 total threads are currently active
-    | Threads Usage: 1 out of 8 total threads are currently active
-    | Threads Usage: 2 out of 8 total threads are currently active
+    | Threads Usage: 0 out of 4 total threads are currently active
+    | Threads Usage: 1 out of 4 total threads are currently active
+    | Threads Usage: 2 out of 4 total threads are currently active
     | ...
-    | Threads Usage: 8 out of 16 total threads are currently active
-    | Threads Usage: 9 out of 16 total threads are currently active
+    | Threads Usage: 4 out of 8 total threads are currently active
+    | Threads Usage: 5 out of 8 total threads are currently active
     | ...
-    | Threads Usage: 23 out of 24 total threads are currently active
-    | Threads Usage: 24 out of 24 total threads are currently active
+    | Threads Usage: 8 out of 8 total threads are currently active
+    | Threads Usage: 7 out of 8 total threads are currently active
     | ...
-    | Threads Usage: 23 out of 24 total threads are currently active
-    | Threads Usage: 22 out of 24 total threads are currently active
+    | Threads Usage: 4 out of 8 total threads are currently active
+    | Threads Usage: 3 out of 7 total threads are currently active
     | ...
-    | Threads Usage: 2 out of 10 total threads are currently active
-    | Threads Usage: 1 out of 9 total threads are currently active
-    | Threads Usage: 0 out of 8 total threads are currently active
+    | Threads Usage: 1 out of 5 total threads are currently active
+    | Threads Usage: 0 out of 4 total threads are currently active
     | ...
 
 Now let's send some signals to the server, with the expectation that they will be recorded but ignored.
@@ -326,11 +325,11 @@ For convenience, we can run two copies of this client with two configuration fil
     $ ! date  # yet another local command
     $ ! exit  # exit the shell
 
-    $ monitor # a remote request to be handled by the shell server
+    $ monitor  # a remote request to be handled by the shell server
 
-    $ ! keepalive # turn on keepalive mode
-    $ fopen test  # a remote request to be handled by the file server
-    $ fread 8 10  # another file manipulation request that follows
+    $ ! keepalive  # turn on keepalive mode
+    $ fopen test   # a remote request to be handled by the file server
+    $ fread 8 10   # another file manipulation request that follows
     ...
 
     $ ! close  # turn off keepalive mode and disconnect
