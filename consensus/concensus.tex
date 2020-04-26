@@ -1,0 +1,171 @@
+\documentclass[11pt]{article}
+
+
+% preamble
+\usepackage[margin=1in]{geometry}
+\usepackage{palatino}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathpazo}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{siunitx}
+\sisetup{
+  round-mode = places,
+  round-precision = 2,
+}
+
+\usepackage[backend=bibtex,style=ieee]{biblatex}
+\bibliography{concensus}
+
+\usepackage[type={CC}, modifier={by-nc-sa}, version={3.0},]{doclicense}
+
+\title{A cursory review of practical consensus protocols in distributed systems}
+\author{Wentao Lu (002276355)}
+\date{}
+
+
+% document
+\begin{document}
+  \maketitle
+  \pagenumbering{arabic}
+
+  \section{Abstract}
+    In a distributed system, a group of replica server nodes is connected by a possibly unreliable network. These nodes could represent a number of processes without shared memory space, or even remote machines located far from each other. At the heart of such a system is the consensus problem, which deals with data consistency across all nodes. Consistency can be easily achieved in a distributed system that never malfunctions. However, this is impractical in the real world where many things can happen unexpectedly. For example, some nodes could crash or go awry, and some nodes are running too slow, network messages could be lost, delayed, duplicated or delivered out of order, etc. As a result, we need some consensus protocols that can correctly lead all nodes to reach an agreement even in the presence of these failures.
+
+    Among the many types of node failures, there are two extremes. In the simplest case of a failure-stop crash, a node always functions normally until it stops and will never restart again. On the other end of the spectrum, Lamport introduced the more complicated Byzantine failure where a node can even send malicious messages or misbehaves in an arbitrary manner while still operating. Conceptually, a Byzantine failure is the worst-case failure we may encounter, therefore, a \small{BFT} \normalsize (Byzantine failure tolerance) consensus protocol is also a \small{CFT} \normalsize (Crash failure tolerance) one, but the opposite does not hold. In this report, we attempt to survey some commonly used distributed consensus protocols mostly in the \small{CFT} \normalsize context, while \small{BFT} \normalsize often revolves around complicated smarter algorithms and requires much more time to study.
+
+  \section{2PC - 2 Phase Commit Protocol}
+    \small{2PC} \normalsize\footnote{\label{}lecture notes \url{https://courses.cs.washington.edu/courses/csep552/13sp/lectures/4/2PC.pdf}} is the simplest form of atomic commitment protocol. In this protocol, a transaction is handled in two phases such that either all server nodes agree to commit or abort together. Distributed consensus is reached through the cooperation of one coordinator and multiple participants. The coordinator is responsible for coordinating all participants and decide to commit or abort the transaction, and a participant represents a node in the replica servers cluster. Each participant will notify the coordinator whether an operation succeeds or fails, then the coordinator will make the final judgment based on feedback from all participants and broadcast its decision.\\
+
+    \noindent In the voting phase, there are three steps:
+    \begin{itemize}
+      \item The coordinator first sends a prepare request to all participants to ask if they are ready to execute the transaction, and then waits for them to respond.
+      \item Each participant executes the transaction locally. On success, it writes undo and redo information to its log file, but does not commit. On failure, it immediately returns and quits the execution.
+      \item All participants respond a \textit{Yes} to the coordinator if execution has succeeded, which indicates that the transaction is committable, or a \textit{No} if it has failed, which indicates that the transaction is not committable.
+    \end{itemize}
+
+    \noindent In the commit phase, there are two cases based on the outcome of the voting phase, if all participants responded \textit{Yes} in the voting phase, then commit in four steps:
+    \begin{itemize}
+      \item The coordinator sends a commit request to all participants.
+      \item On receiving the commit request, a participant commits the transaction and frees all related resources when it is done.
+      \item After the transaction has been committed, participants send \small{ACK} \normalsize to the coordinator.
+      \item After receiving \small{ACK} \normalsize from all participants, the coordinator completes the transaction.
+    \end{itemize}
+
+    \noindent Or else, if some participant responded \textit{No} in the voting phase, then abort in four steps:
+    \begin{itemize}
+      \item The coordinator sends an abort request to all participants.
+      \item On receiving the abort request, a participant aborts the transaction and frees all related resources when it is done.
+      \item After the transaction has been aborted, participants send \small{ACK} \normalsize to the coordinator.
+      \item After receiving \small{ACK} \normalsize from all participants, the coordinator completes the transaction.
+    \end{itemize}
+
+    The 2 Phase Commit Protocol can handle partial failures, but it is not very robust.\footnote{\label{}lecture notes \url{https://www2.cs.duke.edu/courses/fall07/cps212/consensus.pdf}} If a participant fails before receiving a prepare request, the coordinator will timeout and abort the transaction, in this case, all nodes remain in consensus, but availability is undermined since the system cannot commit whatsoever. If a participant fails right after receiving a commit request, the coordinator will timeout without receiving \small{ACK} \normalsize from it, in this case, data is consistent except when that participant recovers without updates. However, if the coordinator fails in either phase, the system becomes unavailable, client requests cannot be served anymore, any participant waiting for it to respond will block, the outcome is undefined until the coordinator recovers. In the worst case, the coordinator crashes after sending only part of the commit requests, so that some participants will commit while some others will not, which can lead to severe data inconsistency.
+
+    From the behavior of \small{2PC}\normalsize, it's easy to see that consensus can be reached as long as the coordinator does not crash. Since a commit decision can only be made when all participants voted \textit{Yes}, that same decision will be committed on every node, the protocol is safe. \small{2PC} \normalsize is easy to understand and implement, but it cannot solve the single node failure which may cause corrupt data. The coordinator matters so much that once it's down the whole system gets stuck. There are two rounds of message exchange between the coordinator and participants, results in a total of $4n - 4$ messages, so the complexity of this protocol is $O(n)$ in the general case.
+
+  \section{3PC - 3 Phase Commit Protocol}
+    \small{3PC} \normalsize is an extension of \small{2PC} \normalsize that aims to solve the blocking problem when the coordinator crashes. As a simple fix, another intermediate \textit{pre-commit} phase is added between the two phases of \small{2PC} \normalsize to ensure that all participants are in consensus before the final stage.\autocite{i3pc}\\
+
+    In the \textit{canCommit} phase, there are two steps:\footnote{\label{}lecture notes \url{https://www.cs.cornell.edu/courses/cs5412/2012sp/slides/XI -2PC and 3PC.pdf}}
+    \begin{itemize}
+      \item The coordinator first sends a \textit{canCommit} request to all participants to ask if they are able to commit the transaction and then waits for them to respond.
+      \item On receiving the \textit{canCommit} request, a participant responds \textit{Yes} if the transaction is deemed as executable, or \textit{No} otherwise.
+    \end{itemize}
+
+    In the \textit{preCommit} phase, there are two cases: pre-commit or abort.
+    \begin{itemize}
+      \item If all participants responded \textit{Yes} in the previous phase, the coordinator sends a \textit{preCommit} request to them and enters the \textit{prepare} state. On receiving such a request, a participant executes the transaction locally. On success, it writes undo and redo information to its log file, responds \small{ACK} \normalsize to the coordinator. Otherwise, it immediately returns and quits the execution.
+      \item If some participant responded \textit{No} in the previous phase, the coordinator sends an \textit{Abort} request to all participants. Then, a participant aborts the transaction either when receiving it or timeouts.
+    \end{itemize}
+
+    In the \textit{doCommit} phase, there are two cases: commit or abort.
+    \begin{itemize}
+      \item If all participants responded \small{ACK} \normalsize in the previous phase, the coordinator switches from the \textit{prepare} state to the \textit{commit} state and sends a \textit{doCommit} request to all of them. On receiving such a request, a participant commits the transaction, frees all related resources when it is done, and responds to the coordinator with \small{ACK} \normalsize. Once the coordinator receives \small{ACK} \normalsize from all participants, it completes the transaction.
+      \item If the coordinator did not receive \small{ACK} \normalsize from some participant in the previous phase (perhaps it received something else or timeout has reached), it sends an \textit{Abort} request to all participants. On receiving it, a participant aborts the transaction and responds to the coordinator with another \small{ACK} \normalsize. Once the coordinator receives \small{ACK} \normalsize from all participants, it completes the transaction.
+    \end{itemize}
+
+    Once the protocol enters the \textit{doCommit} phase, if the coordinator fails or the network between it and the participants fails, then the participants will not be able to receive a \textit{doCommit} or \textit{Abort} request. In this case, a participant will move on to commit the transaction by itself after timeouts. In contrast with \small{2PC} \normalsize, \small{3PC} \normalsize solves the blocking problem when the coordinator is down. This is because once a participant failed to receive a \textit{doCommit} from the coordinator, it always commits by default without blocking and waiting. The correctness and complexity analysis of \small{2PC} \normalsize can be applied to \small{3PC} \normalsize in a similar fashion. However, \small{3PC} \normalsize still suffers from the problem of inconsistent data in some cases. For instance, if a participant fails to receive an \textit{Abort} request due to unreliable network and commits itself after the timeout, its local data will deviate from other participants who have received that request.
+
+  \section{Variants of 2PC \& 3PC}
+    While \small{3PC} \normalsize solved the blocking issue when the coordinator is down, it also introduced another phase that comes with extra communication overhead. Besides, there are many other alternative variants of \small{2PC} \normalsize and \small{3PC} \normalsize that addressed the same problem but tries to maintain the message complexity.
+
+    One such example is the \small{RL2PC} \normalsize protocol published in 2012\autocite{i2pc}, which is just another improved version of \small{2PC}\normalsize. It introduces a new node to play the role of a sub-coordinator. When \small{2PC} \normalsize is working normally, the sub-coordinator is responsible for communicating with the participants and the completion of a transaction. It acts just as a coordinator but also works to send copies of its log information to the primary coordinator. The primary coordinator keeps itself synchronized with the sub-coordinator based on the messages and logs it has received, but it does not talk to the participants directly. In case the coordinator or sub-coordinator crashes, the other one can simply take over its place and continue to coordinate the participants since it is updated and has the full control privilege. Once the failed coordinator recovers, it will then provide a copy of the most up-to-date data log to make sure that the failed one can get updates and resume normal work. From the perspective of participants, at any given time, it seems that there's only one coordinator.
+
+    The difference between \small{RL2PC} \normalsize is that additional space is required to allow for another coordinator node. Obviously, this approach can be further generalized to more coordinators, where we can sacrifice storage in exchange for system availability. The complexity of this algorithm is the same as \small{2PC} \normalsize since we don't need to send another round of messages. However, the system is much more robust, it will only become unavailable if both coordinators die at the same time, but the chances are rare.
+
+    Another non-blocking version of \small{2PC} \normalsize is the EasyCommit protocol\autocite{i2pc2}. Instead of adding nodes to the cluster to ensure system safety, EasyCommit accomplishes the same goal by improving the commit phase of \small{2PC}\normalsize. In this updated version of the commit phase, a participant who has received a global decision from the coordinator will first broadcast his received message to all the other nodes before it commits or aborts. If a participant has received a global decision from other participants, then it does not have to wait for the coordinator. Consequently, unless all nodes have crashed, a participant can always receive a decision message from its peers so that a failed coordinator will not block the system. Despite the fact that we have added possibly redundant messages into the system, unlike \small{3PC}\normalsize, participants now do not need another round of message waiting. Once it received the message from any other node, it can safely ignore other messages and proceed, so that the overhead is trivial.
+
+    Moreover, \small{RL2PC} \normalsize also solves the single point failure of the coordinator. If the coordinator did not receive messages from a participant before timeouts, it aborts the transaction. On the other hand, if a participant did not receive messages from the coordinator or any other peer before timeouts, it will attempt to communicate with other peers to reach an agreement. (This happens most likely when the coordinator crashed early so that no participant can receive messages from it and broadcast) For example, if the coordinator died right after sending a request to participant $A$, other participants can still get to know about the global decision from $A$, then all of them will be in consensus and take the same action. If $A$ also died before broadcasting its received message, which means that $A$ did not commit, then all the other participants will eventually timeout and lose connection with $A$, in this case they can randomly select a new active coordinator only among themselves and abort. In all situations, consensus is well maintained and the system is Crash failure tolerant.
+
+  \section{Raft}
+    Among all the famous consensus protocols, Raft\autocite{raft} is the easiest to understand. Raft sees every server as a state machine, and each state machine maintains a log file. Whenever a client submits a request to the server, it is equivalent to appending a log entry to the state machine. Raft algorithm ensures that all the log files are eventually synchronized in a distributed cluster so that all state machines will handle requests by taking actions in the same order, and output the same final result.
+
+    In this protocol, a server process can be classified into three roles: leader, candidate, and follower. At any given time, a server can only act as one of them, but this role evolves over time. Later at another time, that server can play a different role. The leader election phase is very much analogous to the real world election as to how several followers vote a leader: at first there are no leaders, everyone in the cluster is a follower, when a round of vote starts, everyone is eligible to become the candidate, and then a leader will be elected, his domination starts with a fixed term or lease, before the term expires, everyone else becomes his followers to accept his dominance.
+
+    The key step of Raft to reach consensus is leader election. When the system starts, all nodes are initially followers blocking within a timeout, every follower has a random election timeout within a reasonable range. The first follower who wakes up from the timeout will initiate a round of the vote, he votes himself, increments his term and keeps track of it, then he requests other nodes which are still sleeping in the timeout to vote for him. As other nodes wake up and vote, once this candidate has received more than half votes, he wins the vote and will change his role to a leader. Then he starts to broadcast his heartbeat periodically to announce the beginning of his term, so that no other node will initiate another round of the vote. If a candidate in the voting phase receives a heartbeat from other nodes whose term is higher than his, it means that some other candidate has already won the vote so he just gives up. It is possible that many candidates could wake up and start rounds of vote at the same time, but none of them is likely to receive the majority of votes, in this case, candidates will finally timeout while waiting for the votes, and whoever timeouts first will initiate a new round of the election. Since the election timeout is at random, Raft guarantees that the election phase can reach an agreement very quickly. A leader will continue to play his role until crash failure, if this happened, followers would not receive heartbeats since the leader has died, then, the follower who timeouts first and realizes this fact will initiate a new vote phase for himself.
+
+    As it is true with the coordinator in \small{2PC} \normalsize and \small{3PC} \normalsize, the leader role in Raft is crucial as well. Raft's leader election procedure warranties the availability of a leader even in the presence of a leader crash, which renders us more robustness. In fact, safety is also naturally inherited in this algorithm. Within any term, there can be exactly one leader, and only the server which has the longest term (server which is synchronized with the most recent log entries) can be elected as the leader. Therefore, the leader is always up-to-date, so any message passing mechanism that follows can easily realize data consistency.
+
+    Now that we have an up-to-date leader, Raft simply adopts \small{2PC} \normalsize for the interaction between server nodes. When a client issues a request to the cluster leader, the state of data at the leader node is \textit{uncommitted}. The leader then concurrently forwards data to all the followers and wait for their responses. After the majority of followers have acknowledged the receipt of data, the leader then responds \small{ACK} \normalsize to the client. Once the acknowledgment has been replied to the client, the state of data transfers from \textit{uncommitted} to \textit{committed}, and the leader will send a commit request to all followers, who then commit data locally and respond \small{ACK} \normalsize to the leader. It is plain to see that this is indeed \small{2PC} \normalsize, what differs is that Raft's leader is always available so that blocking is not possible thanks to the efficient election mechanism. If some followers have crashed, consensus is still observed among all the active nodes. Therefore, problems can only emerge during the vulnerable period when the old leader has died but a new leader has not yet been voted.
+
+    If leader crashes before receiving the client's request, no \small{ACK} \normalsize will be responded so the client has to retry after timeouts, data consensus is not affected, and a new leader will take over when the client retries. If leader crashes before forwarding data to the follower, the state of data is \textit{uncommitted} so \small{ACK} \normalsize is not expected, again the client has to retry after timeouts. In both cases, data is consistent, when the crashed leader recovers, it becomes a follower of the new leader and synchronizes data from it.
+
+    If data has already been forwarded to all the followers, but leader crashes before followers respond with \small{ACK} \normalsize, then the state of data at the follower nodes are \textit{uncommitted}, but they are consistent, data can be committed after the system selects a new leader. In this case, the client has no idea if data has been committed so it retries after a few seconds, which may cause duplicated commits. Fortunately, Raft also enforces a remote process call to be idempotent so that duplicated client requests do not affect data consistency. Likewise, if leader crashes after forwarding data to only some followers, then the state of data at the follower nodes are \textit{uncommitted} and inconsistent. In this case, a leader can only be selected among the followers who have already received that data since Raft requires a qualified leader to be up-to-date, after vote, the new leader will synchronize data to the other followers, so that data won't be lost and eventually it's consistent.
+
+    In summation, eventual consensus can be achieved in all possible cases of fail-stop failure. The Raft election mechanism is blazingly fast, and inconsistent data can take place only within a very short window. Speaking of message complexity, Raft runs in $O(n)$ time in general since it adopts the \small{2PC} \normalsize as mentioned above.
+
+  \section{Paxos}
+    Another leader-based consensus protocol is the Paxos algorithm which was proposed by Lamport in 1980\autocite{paxos}. Paxos is widely cited and regarded as the most efficient distributed consensus algorithm we have so far. Nevertheless, it is often thought to be abstruse and difficult to implement despite the attractive story the author creates to illustrate his ideas.\footnote{\label{}slides \url{https://courses.cs.washington.edu/courses/csep552/13sp/lectures/5/paxos.pdf}} As a result, Lamport translated his original paper into a much simpler and readable version with descriptive steps of proof in 2001.\autocite{paxos2001}
+
+    As mentioned in his refined paper, there are three roles in this algorithm: proposer, acceptor, and learner. A proposer can propose a proposal, an acceptor can accept or reject a proposal, once a proposal has been accepted, its value is chosen and cannot be mutated. Acceptors broadcast a chosen proposal to the learner, then the learner learns that chosen value. Similar to the Raft algorithm, a server can play different roles depending on the context. What makes Paxos different is that it allows multiple proposers to concurrently make proposals, while in Raft, there can only be one leader at any given time.
+
+    Paxos has two phases, the \textit{prepare} phase and the \textit{acceptor} phase. In the \textit{prepare} phase, a proposer first selects a non-decreasing number as the proposal \small{ID}\normalsize, then it sends a prepare request with \small{ID} \normalsize $n$ to some majority group of acceptors. In receipt of the prepare request, an acceptor checks its history, if it has never responded to any prepare request whose \small{ID} \normalsize is greater than or equal to $n$, then it responds to the proposer with the max-\small{ID} \normalsize proposal it has ever received (or $null$), and promises that it won't respond to any prepare request whose \small{ID} \normalsize is less than $n$. If the acceptor has already promised another proposal with a larger \small{ID}\normalsize, it does not respond.
+
+    In the \textit{acceptor} phase, the proposer waits for responses from acceptors. If more than half acceptors have responded, it then sends an accept request to these acceptors, which includes the \small{ID} \normalsize $n$ and a value. That value is the value of the largest-\small{ID} \normalsize proposal that it receives from the acceptors, or an arbitrary value if it receives no proposals. In receipt of the accept request, an acceptor accepts the proposal if it has not responded to any proposal with a larger \small{ID}\normalsize, or rejects the proposal if it does.
+
+    To derive the correctness of this abstruse algorithm, we need to step back and start from the goals of consistency: if no proposals have been proposed, then no proposal will be chosen, if some proposals have been proposed, only one of them will eventually be chosen. Simply put, there must be one and only one proposal to be chosen. In order to enforce that at most one proposal can be chosen, that proposal needs to be accepted by the majority of acceptors. This is because any two majority groups or quorums must share at least one node, so that two distinct majority groups cannot accept two different proposals, otherwise they cannot both be “majority”. Besides, if we want to ensure that at least one proposal will be chosen, an acceptor must accept the first proposal it receives, otherwise majority cannot be guaranteed. This leads us to the first condition:
+    \begin{itemize}
+      \item[\textbf{P1}] an acceptor must accept the first proposal it receives.
+    \end{itemize}
+    However, it is still possible that majority is not met when there are many different proposals, we need to find a way to distinguish between proposals with the same value. To do so, a proposal can be prefixed with a distinct \small{ID} \normalsize number, so that we can choose different proposals. But we still require the chosen proposal to be unique, now we need another condition:
+    \begin{itemize}
+      \item[\textbf{P2}] if a proposal with value $v$ is chosen, all chosen proposals with a higher \small{ID} \normalsize number must also have value $v$.
+    \end{itemize}
+    Since a chosen proposal must be accepted by some acceptors, this can be rephrased as:
+    \begin{itemize}
+      \item[\textbf{P2a}] if a proposal with value $v$ is chosen, all proposals with a higher \small{ID} \normalsize number that is accepted by any acceptor must also have value $v$.
+    \end{itemize}
+    This time we have another corner case where some acceptor $c$ has not yet received any proposal, but a new proposal with a higher \small{ID} \normalsize and a value $\neq v$ could be sent to $c$. In this case, $c$ must accept this proposal according to P1, which then violates P2a, so we need to further modify P2a as:
+    \begin{itemize}
+      \item[\textbf{P2b}] if a proposal with value $v$ is chosen, any proposal with higher \small{ID} \normalsize number proposed by any proposer must also have value $v$.
+    \end{itemize}
+    The causal relationship of "$\text{propose}\Rightarrow\text{accept}\Rightarrow\text{choose}$" implies that "$\text{P2b}\Rightarrow\text{P2a}\Rightarrow\text{P2}$", so in order to realize P2b, we just need to meet a variant of it:
+    \begin{itemize}
+      \item[\textbf{P2c}] if a proposal with value $v$ and \small{ID} \normalsize $n$ is proposed, there must be a majority set of acceptors $S$ such that one of the following is satisfied:
+      \item[1] Either: $S$ does not have any acceptor who has accepted a proposal with \small{ID} \normalsize less than $n$.
+      \item[2] Or: the proposal accepted by acceptors in $S$ with the highest \small{ID} \normalsize has value $v$.
+    \end{itemize}
+    To maintain P2c, when a proposer proposes a proposal with \small{ID} \normalsize $n$, it must also learn the value of the proposal with the highest \small{ID} \normalsize $\le n$. Such a proposal may have already been accepted or not yet, in the latter case the proposer is not able to predict and learn an unaccepted value. Therefore, the proposer must also request the acceptor not to accept any proposals whose \small{ID} \normalsize is less than $n$, this leads to an even stricter version of P1:
+    \begin{itemize}
+      \item[\textbf{P1a}] an acceptor can accept a proposal with \small{ID} \normalsize $n$, if and only if it has not responded to any proposal whose \small{ID} \normalsize is greater than $n$.
+    \end{itemize}
+    Putting all the pieces together, we can now verify that these conditions are actually in alignment with what the Paxos two phases do. Thus, Paxos ensures safety and correctness.
+
+  \section{Conclusion}
+    \small{2PC} \normalsize is the simplest version of consensus protocols. It is concise, straightforward, widely used and easy to implement. However, it also suffers from the blocking issue and single point of failure. As an extension of \small{2PC} \normalsize to address these problems, \small{3PC} \normalsize introduces an extra phase of message exchange with additional communication overhead, as a result blocking is alleviated, but in some cases data inconsistency could still occur. Meanwhile, many invariants of \small{2PC} \normalsize and \small{3PC} \normalsize have been researched to deal with the lack of robustness of the coordinator node, but these models always come at a price, either redundant messages are necessary between participants, or additional storage is required to act as backup coordinators. These approaches alone are conservative inside that cannot effectively solve the consensus problem in real-world large applications.
+
+    Paxos is the most classic consensus algorithm which is widely recognized in theory. By allowing any node to serve as a leader or proposer to avoid a single vulnerable coordinator, it is non-blocking, crash failure tolerant, network partition tolerant and is able to efficiently solve the consistency problem in modern distributed systems. The only downside is its opacity that makes it challenging to implement, and the mathematical proof is somewhat abstract. Hence, in pursuit of an easily understandable consensus algorithm, another famous algorithm Raft was invented in 2014 that comes to the rescue, which is as efficient as Paxos. Compared to Paxos, Raft emphasizes the role of a single leader, it divides the key elements of the consensus procedure into different components such as leader election and log replication, this makes it much easier for students to learn. In addition, the authors of Raft also draft the various components in much detail so that implementation is comfortable.
+
+  \section{Future Improvements}
+    None of the protocols we have surveyed this time accounts for Byzantine failures, they are safe and robust to some extent but only in the presence of fail-stop faults. While these \small{CFT} \normalsize protocols are the building blocks of distributed consensus algorithms, there are also many \small{BFT} \normalsize protocols such as the recursive oral message algorithm $OM(m)$\autocite{bft}, as well as many other improved variants of \small{CFT} \normalsize protocols including Byzantizing Paxos, multi-Paxos, \small{BFT} \normalsize Raft Tangaroa, Zab, viewstamped replication and so on. For future study, we plan to conduct a more detailed review of consensus protocols and failure detectors that are capable of dealing with exotic node faults.
+
+
+  \vspace{8mm}
+  \printbibliography
+
+  \vfill
+  \doclicenseThis
+
+\end{document}
