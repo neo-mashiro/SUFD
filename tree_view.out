@@ -12,8 +12,8 @@
 │   │   └── [4.0K]  utils.h
 │   ├── [ 331]  Makefile
 │   └── [4.0K]  src
-│       ├── [ 12K]  main.cpp
-│       └── [7.0K]  utils.cpp
+│       ├── [ 12K]  main.cc
+│       └── [7.0K]  utils.cc
 ├── [4.0K]  src
 │   ├── [8.0K]  daemon.c
 │   ├── [ 18K]  fserv.c
