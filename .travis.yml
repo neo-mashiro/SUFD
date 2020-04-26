@@ -11,8 +11,8 @@ compiler:
   - gcc
 
 script:
+  - mkdir ${TRAVIS_BUILD_DIR}/build
   - make clean && make
-  - cd ${TRAVIS_BUILD_DIR}/client && make clean && make
 
 # safelist
 branches:

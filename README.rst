@@ -26,7 +26,6 @@ SUFD: A Simple MultiThread Unix File Daemon in C
 -  `Installation <#installation>`__
 -  `Synopsis <#synopsis>`__
 -  `Integration Test <#integration-test>`__
--  `Sample Client <#sample-client>`__
 -  `Reference <#reference>`__
 
 -----
@@ -93,6 +92,7 @@ In a current Linux distribution with a standard C/C++ compiler and a recent vers
 
 .. code-block:: shell
 
+    $ mkdir build
     $ make clean && make
 
 Synopsis
@@ -127,7 +127,7 @@ First we start the daemon in background, a log file is created. We can play with
     | Escape character is '^]'.
     | Welcome to the database! Please issue your command, or type QUIT to exit.
     | Available commands: FOPEN FSEEK FREAD FWRITE FCLOSE
-    | > 
+    | >
     | > fopen test
     | OK 8 file opened successfully
     | > fwrite 8 apple
@@ -157,7 +157,7 @@ Now we connect to the shell server on port 9001, issue a ``monitor`` command to 
     | > cprint
     | #86~16.04.1-Ubuntu SMP Mon Jan 20 11:02:50 UTC 2020
     | OK 0 Output printed
-    | > 
+    | >
     | > monitor
     | Threads Usage: 1 out of 4 total threads are currently active
     | Threads Usage: 1 out of 4 total threads are currently active
@@ -295,44 +295,6 @@ If we need to force stop the server, sending the uncatchable *SIGKILL* will alwa
 .. code-block:: shell
 
     $ kill -9 27698
-
-Sample Client
-^^^^^^^^^^^^^
-
-In case ``telnet`` or a bash shell is not available in some operating systems, the client in the client\_ folder may be helpful. While it simulates a normal Unix shell, it is also able to communicate with the daemon in the absence of an installed ``telnet`` program.
-
-.. code-block:: shell
-
-    $ cd client           # change to the client subfolder
-    $ make clean && make  # build target
-    $ ./sshell            # run the client shell
-..
-
-On startup, this client reads a configuration file ``config.ini`` in its root folder, which has four lines:
-
-    | VSIZE 40
-    | HSIZE 75
-    | RHOST localhost
-    | RPORT 9001
-
-The width and height of the terminal window is specified by *VSIZE* and *HSIZE*, respectively. *RHOST* is followed by a host name, *RPORT* is followed by a port number, so that the simple shell is able to connect to a server and issue remote commands. To use it like a local Unix shell, a command must be prefixed with ``!``, otherwise, it is treated as a request (remote command) to be sent to the server. To issue a command in background, it must be prefixed with ``&``, rather than being suffixed with ``&``. This is how it differs from a real bash shell. Background commands are implemented with the use of ``fork``, ``execve`` and sometimes ``waitpid``, zombie processes are reaped as appropriate.
-
-For convenience, we can run two copies of this client with two configuration files, one connects to the shell port, and another one to the file port. Besides, there are three special local commands, ``exit`` will stop the shell program, ``keepalive`` will activate the keepalive mode in the sense that connection to the server is maintained so that the next remote command doesn't need to connect again, and ``close`` will turn off the keepalive mode. Normally, each remote request establishes its own connection, which is immediately closed after request has been served. Therefore, when talking to the file server, make sure that keepalive mode is on, otherwise we can only issue an ``fopen`` request but all requests that follow will fail due to the brand new sessions. Here are some examples:
-
-.. code-block:: shell
-
-    $ ! ls    # a local shell command
-    $ ! date  # yet another local command
-    $ ! exit  # exit the shell
-
-    $ monitor  # a remote request to be handled by the shell server
-
-    $ ! keepalive  # turn on keepalive mode
-    $ fopen test   # a remote request to be handled by the file server
-    $ fread 8 10   # another file manipulation request that follows
-    ...
-
-    $ ! close  # turn off keepalive mode and disconnect
 
 Reference
 ^^^^^^^^^
