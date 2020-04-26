@@ -400,11 +400,8 @@ In case ``telnet`` or a bash shell is not available in some operating systems, t
 On startup, this client reads a configuration file ``config.ini`` in its root folder, which has four lines:
 
     | VSIZE 40
-    | 
     | HSIZE 75
-    | 
     | RHOST localhost
-    | 
     | RPORT 9001
 
 The width and height of the terminal window is specified by *VSIZE* and *HSIZE*, respectively. *RHOST* is followed by a host name, *RPORT* is followed by a port number, so that the simple shell is able to connect to a server and issue remote commands. To use it like a local Unix shell, a command must be prefixed with ``!``, otherwise, it is treated as a request (remote command) to be sent to the server. To issue a command in background, it must be prefixed with ``&``, rather than being suffixed with ``&``. This is how it differs from a real bash shell. Background commands are implemented with the use of ``fork``, ``execve`` and sometimes ``waitpid``, zombie processes are reaped as appropriate.
