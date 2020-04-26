@@ -1,3 +1,3 @@
 # SUFD - replica version
 
-A naive solution of peer synchronization
+A naive solution for peer synchronization.
