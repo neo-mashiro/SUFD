@@ -7,15 +7,15 @@
 
 **Repository statistics**
 
-https://api.github.com/repos/neo-mashiro/SUFD
+- https://api.github.com/repos/neo-mashiro/SUFD
 
 **Table of Contents:**
 
 - [Introduction](#introduction)
 - [Features](#features)
-- [Installation & Requirements](#installation-&amp-requirements)
+- [Installation & Requirements](#installation--requirements)
 - [Command Line Options](#command-line-options)
-- [Usage & Test](#usage-test)
+- [Usage & Test](#usage--test)
 - [Sample Client](#sample-client)
 - [Reference](#reference)
 
@@ -28,6 +28,8 @@ SUFD is a simple daemon that simulates a flat file database which allows multipl
 The shell server is intended for internal use only. It binds to the loopback address with backlog set to 1, so that only 1 local connection can be accepted. Once a command is issued, the output will be stored in a pipe, but won't be sent back until the admin issues a `cprint`, which prints the output of the last executed shell command. The admin user can disconnect by typing `quit`, or view the dynamic threads usage information by issuing a `monitor` command, this requests the server to continuously send such data per second until the admin hits Enter. If no command has been issued, the session expires after 5 minutes of inactivity.
 
 The file server is able to handle concurrent reads and writes from multiple clients, below is a list of acceptable commands to manipulate files. Note that `fseek` is essentially a write request, and `fclose` must wait until all readers and writers are done with their work. To eliminate race conditions and ensure data integrity, a simple reader-writer paradigm is implemented with a mutex and a conditional variable so that concurrent reads are allowed while a write request is exclusive. That said, the file access control does not use semaphores to solve the dining philosophers problem, so a writer could possibly starve. To prevent forever idle clients as well as potential deadlocks, a client session quits itself after 1 minute of inactivity.
+
+Upon completion of a shell/file request, the server responses with a line of the form `status code message`, where `status` is either _OK_, _FAIL_ or _ERR_, indicating if a request has been completed, failed or executed with errors, `code` is either 0, a server-side error code or the identifier of a file, and `message` is a user-friendly message or the bytes associated with a read/write operation. In particular, if an `fopen` request attempts to open a file that has already been opened by clients in other threads, an error response should be expected, whose error code then tells the client which identifier to operate on. To implement this, [open file description locks](https://www.gnu.org/software/libc/manual/html_node/Open-File-Description-Locks.html) have been used to ensure mutual exclusion among distinct client threads.
 
 <div>
     <table style="border:2px solid black;margin-left:auto;margin-right:auto;">
@@ -57,8 +59,6 @@ The file server is able to handle concurrent reads and writes from multiple clie
         </tr>
     </table>
 </div>
-
-Upon completion of a shell/file request, the server responses with a line of the form `status code message`, where `status` is either _OK_, _FAIL_ or _ERR_, indicating if a request has been completed, failed or executed with errors, `code` is either 0, a server-side error code or the identifier of a file, and `message` is a user-friendly message or the bytes associated with a read/write operation. In particular, if an `fopen` request attempts to open a file that has already been opened by clients in other threads, an error response should be expected, whose error code then tells the client which identifier to operate on. To implement this, [open file description locks](https://www.gnu.org/software/libc/manual/html_node/Open-File-Description-Locks.html) have been used to ensure mutual exclusion among distinct client threads.
 
 ## Features
 
