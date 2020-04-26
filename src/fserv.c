@@ -518,14 +518,24 @@ void serve_client(int csock) {
                             if (strcmp(response[i], response[j]) == 0) count++;
                         }
 
-                        if(count > maxCount) {
+                        if (count > maxCount) {
                             maxCount = count;
                             vote = i;
                         }
                     }
+                    if (maxCount <= num_peers/2) {
+                        vote = -1;
+                    }
 
-                    echo.message = strdup(response[vote]);
-                    echo.code = strlen(echo.message);
+                    if (vote == -1) {
+                        echo.status = "FAIL";
+                        echo.message = "NO MAJORITY VALUE";
+                        echo.code = 99;
+                    }
+                    else {
+                        echo.message = strdup(response[vote]);
+                        echo.code = strlen(echo.message);
+                    }
                     if (strcmp(echo.message, "SYNC FAIL") == 0) {
                         echo.status = "FAIL";
                         echo.code = 99;

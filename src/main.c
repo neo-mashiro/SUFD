@@ -1,15 +1,3 @@
-/*
-** shfd -- Assignment 4 (CS 464/564), Bishop's University
-**
-** @author:    Wentao Lu (002276355) WLU19@UBishops.ca
-**             Yi Ren (002269013) YREN19@UBishops.ca
-** @date:      2020/04/12
-** @reference: CS 464/564 Course website - https://cs.ubishops.ca/home/cs464
-**             Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
-**             Beej's Guide to Unix IPC - http://beej.us/guide/bgipc/html/single/bgipc.html
-**             POSIX thread libraries - http://www.yolinux.com/TUTORIALS/LinuxTutorialPosixThreads.html
-*/
-
 #include "define.h"
 
 // initialize global parameters
