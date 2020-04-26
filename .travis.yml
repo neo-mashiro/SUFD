@@ -1,0 +1,19 @@
+language: c
+
+install: skip
+
+os: linux
+
+dist: xenial
+
+compiler:
+  - clang
+  - gcc
+
+script:
+  - make clean && make
+  - cd ${TRAVIS_BUILD_DIR}/client && make clean && make
+
+# safelist
+branches:
+  only: master

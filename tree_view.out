@@ -1,12 +1,6 @@
 .
 ├── [4.0K]  build
-├── [4.0K]  include
-│   ├── [2.6K]  define.h
-│   └── [3.5K]  utils.h
-├── [6.9K]  LICENSE
-├── [ 362]  Makefile
-├── [ 20K]  README.md
-├── [4.0K]  sample client
+├── [4.0K]  client
 │   ├── [  45]  config.ini
 │   ├── [4.0K]  include
 │   │   └── [4.0K]  utils.h
@@ -14,6 +8,12 @@
 │   └── [4.0K]  src
 │       ├── [ 12K]  main.cc
 │       └── [7.0K]  utils.cc
+├── [4.0K]  include
+│   ├── [2.6K]  define.h
+│   └── [3.5K]  utils.h
+├── [6.9K]  LICENSE
+├── [ 362]  Makefile
+├── [ 20K]  README.md
 ├── [4.0K]  src
 │   ├── [8.0K]  daemon.c
 │   ├── [ 18K]  fserv.c

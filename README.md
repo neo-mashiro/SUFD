@@ -266,13 +266,13 @@ $ kill -9 27698
 
 ## Sample Client
 
-In case `telnet` or a bash shell is not available in some operating systems, the client in the _sample client_ folder may be helpful. While it simulates a normal Unix shell, it is also able to communicate with the daemon in the absence of an installed `telnet` program. To build and run, `cd` to that folder and type:
+In case `telnet` or a bash shell is not available in some operating systems, the client in the client_ folder may be helpful. While it simulates a normal Unix shell, it is also able to communicate with the daemon in the absence of an installed `telnet` program. To build and run, `cd` to that folder and type:
 ```shell
 $ make clean && make
 $ ./sshell
 ```
 
-On startup, this client reads a configuration file `config.ini` in its root folder _./sample client_, which has four lines:
+On startup, this client reads a configuration file `config.ini` in its root folder _./client_, which has four lines:
 > VSIZE 40  
 > HSIZE 75  
 > RHOST localhost  
@@ -298,5 +298,5 @@ $ ! close  # turn off keepalive mode and disconnect
 
 ## Reference
 
-[1] Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/  
-[2] Internetworking with TCP/IP Vol.3: Client-Server Programming and Applications (POSIX Sockets Version)
+- [1] Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
+- [2] Internetworking with TCP/IP Vol.3: Client-Server Programming and Applications (POSIX Sockets Version)
