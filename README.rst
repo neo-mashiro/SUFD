@@ -8,8 +8,8 @@ SUFD: A Simple MultiThread Unix File Daemon in C
 .. image:: https://img.shields.io/travis/neo-mashiro/SUFD/master?label=Master%20Build&style=plastic
    :target: https://travis-ci.com/neo-mashiro/SUFD
 
-.. image:: https://img.shields.io/badge/License-CC0%201.0-blue.svg?style=plastic
-   :target: http://creativecommons.org/publicdomain/zero/1.0/
+.. image:: https://img.shields.io/github/license/neo-mashiro/SUFD?color=%231E90FF&style=plastic
+   :target: https://github.com/git/git-scm.com/blob/main/MIT-LICENSE.txt
 
 .. image:: https://img.shields.io/github/repo-size/neo-mashiro/SUFD?color=%2300BFFF&label=Repo%20Size&style=plastic
    :target: https://github.com/neo-mashiro/SUFD
