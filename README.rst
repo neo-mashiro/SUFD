@@ -300,4 +300,5 @@ Reference
 ^^^^^^^^^
 
 .. [#beej] Beej's Guide to Network Programming - http://beej.us/guide/bgnet/html/
+.. [#beej] Beej's Guide to Unix Interprocess Communication - https://beej.us/guide/bgipc/html/index-wide.html
 .. [#CSPA] Internetworking with TCP/IP Vol.3: Client-Server Programming and Applications (POSIX Sockets Version)
